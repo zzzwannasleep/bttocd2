@@ -1,0 +1,39 @@
+services:
+  bt2cd2:
+    build: .
+    image: bt2cd2:latest
+    container_name: bt2cd2
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      # --- Web UI 登录 ---
+      WEB_USERNAME: "admin"
+      WEB_PASSWORD: "${WEB_PASSWORD:-}"        # 留空则首次启动自动生成并打印在日志中
+      # SECRET_KEY: 留空自动生成并持久化到 /data/secret.key
+
+      # --- CloudDrive2 连接 ---
+      CD2_URL: "${CD2_URL:-http://host.docker.internal:19798}"
+      CD2_USERNAME: "${CD2_USERNAME:-}"
+      CD2_PASSWORD: "${CD2_PASSWORD:-}"
+      DEFAULT_TARGET_FOLDER: "${DEFAULT_TARGET_FOLDER:-/}"
+
+      # --- 风控 / 反 Cloudflare ---
+      HOST_MIN_INTERVAL: "30"        # 同一站点两次请求最小间隔（秒）
+      FETCH_JITTER_SECONDS: "20"     # 每次抓取额外随机延迟 0~N 秒
+      DEFAULT_INTERVAL_MINUTES: "30" # 新订阅默认轮询间隔
+      MAX_ITEMS_PER_RUN: "20"        # 单次抓取最多推送条数（安全阀）
+      # FLARESOLVERR_URL: "http://flaresolverr:8191"  # 可选：硬 CF 盾时启用
+      # CRAWL_PROXY: "http://proxy:7890"              # 可选：抓取走代理
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # 让容器能访问宿主机上的 CD2
+
+  # 可选：处理 Cloudflare Turnstile / 5 秒盾。需要时取消注释并设置 FLARESOLVERR_URL。
+  # flaresolverr:
+  #   image: ghcr.io/flaresolverr/flaresolverr:latest
+  #   container_name: flaresolverr
+  #   restart: unless-stopped
+  #   environment:
+  #     LOG_LEVEL: info

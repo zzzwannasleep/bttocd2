@@ -1,0 +1,21 @@
+# runtime data & secrets
+data/
+.env
+*.key
+web_password.txt
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# local API guides (large reference docs, not part of the app)
+CloudDrive2_gRPC_API_Guide.md
+CloudDrive2_gRPC_API_Guide_zh-CN.md
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

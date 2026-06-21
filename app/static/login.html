@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bt2cd2 · 登录</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="login-bg">
+  <form id="login-form" class="card login-card">
+    <h1>bt2cd2</h1>
+    <p class="muted">BT RSS → CloudDrive2 离线下载</p>
+    <input id="username" placeholder="用户名" autocomplete="username" value="admin" />
+    <input id="password" type="password" placeholder="密码" autocomplete="current-password" />
+    <button type="submit">登录</button>
+    <p id="err" class="error"></p>
+  </form>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      err.textContent = '';
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      if (res.ok) { location.href = '/'; }
+      else { err.textContent = '登录失败，请检查用户名或密码'; }
+    });
+  </script>
+</body>
+</html>

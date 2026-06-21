@@ -1,0 +1,10 @@
+data/
+.env
+*.md
+!README.md
+__pycache__/
+*.pyc
+.git/
+.venv/
+venv/
+CloudDrive2_gRPC_API_Guide*.md

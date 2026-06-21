@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bt2cd2 · 控制台</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">bt2cd2 <span class="muted">RSS → CloudDrive2</span></div>
+    <div class="header-right">
+      <span id="cd2-status" class="badge">CD2: …</span>
+      <button class="ghost" id="logout">退出</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="row-between">
+        <h2>RSS 订阅源</h2>
+        <button id="new-feed">+ 新增订阅</button>
+      </div>
+      <div id="stats" class="muted small"></div>
+      <table id="feeds-table">
+        <thead>
+          <tr>
+            <th>名称</th><th>地址</th><th>间隔</th><th>目标文件夹</th>
+            <th>状态</th><th>启用</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <div class="row-between">
+        <h2>推送记录</h2>
+        <button class="ghost" id="refresh-items">刷新</button>
+      </div>
+      <table id="items-table">
+        <thead><tr><th>时间</th><th>标题</th><th>状态</th><th>信息</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Feed editor modal -->
+  <div id="modal" class="modal hidden">
+    <form class="card modal-card" id="feed-form">
+      <h2 id="modal-title">新增订阅</h2>
+      <input type="hidden" id="feed-id" />
+      <label>名称<input id="f-name" required maxlength="120" placeholder="例如 dmhy-动画" /></label>
+      <label>RSS 地址<input id="f-url" required placeholder="https://share.dmhy.org/topics/rss/rss.xml" /></label>
+      <div class="grid2">
+        <label>类型
+          <select id="f-kind">
+            <option value="auto">自动识别</option>
+            <option value="dmhy">动漫花园 dmhy</option>
+            <option value="bthome">BtHome / 1lou</option>
+            <option value="nyaa">Nyaa</option>
+            <option value="generic">通用</option>
+          </select>
+        </label>
+        <label>轮询间隔（分钟）<input id="f-interval" type="number" min="5" max="1440" value="30" /></label>
+      </div>
+      <label>目标文件夹（CD2 路径）<input id="f-folder" placeholder="/115网盘/离线下载" /></label>
+      <div class="grid2">
+        <label>标题包含（正则，可空）<input id="f-include" placeholder="例如 1080p|简体" /></label>
+        <label>标题排除（正则，可空）<input id="f-exclude" placeholder="例如 720p|繁體" /></label>
+      </div>
+      <label class="checkbox"><input id="f-enabled" type="checkbox" checked /> 启用</label>
+      <p id="form-err" class="error"></p>
+      <div class="row-between">
+        <button type="button" class="ghost" id="preview-btn">预览（不推送）</button>
+        <div>
+          <button type="button" class="ghost" id="cancel-btn">取消</button>
+          <button type="submit">保存</button>
+        </div>
+      </div>
+      <pre id="preview-out" class="preview hidden"></pre>
+    </form>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

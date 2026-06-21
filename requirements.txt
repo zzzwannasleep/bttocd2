@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+feedparser==6.0.11
+cloudscraper==1.2.71
+APScheduler==3.11.0
+itsdangerous==2.2.0
+clouddrive>=0.0.13
+PyYAML==6.0.2
+httpx==0.28.1
