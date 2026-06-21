@@ -43,6 +43,28 @@ docker compose logs -f bt2cd2   # 若未设 WEB_PASSWORD，这里能看到自动
 
 保存后可点「立即检查」或「预览（不推送）」验证规则是否正确。
 
+## BT之家 1LOU（种子站，需登录 Cookie）
+
+1lou（现域名 `www.1lou.me`）**没有 RSS**，且 `.torrent` 附件**需要登录**才能下载，
+CloudDrive2 自己也无法抓取这种登录受限的种子。所以本程序的处理方式是：
+
+1. 抓取你填的**列表页**（如最新电影 `https://www.1lou.me/forum-1.htm`，或某个分类/搜索页）；
+2. 进入每个新帖子，找到 `attach-download-<id>.htm` 种子附件；
+3. **用你的登录 Cookie 把 `.torrent` 下载下来**，本地解析 bencode、算出 infohash，
+   **转换成磁力链接**（`magnet:?xt=urn:btih:...&dn=...&tr=...`）；
+4. 把磁力推给 CD2 离线下载。
+
+### 怎么填 Cookie
+
+1. 浏览器登录 `www.1lou.me`；
+2. F12 → Network，刷新页面，点任意请求 → Request Headers 里复制完整的 `Cookie:` 值；
+3. 新增订阅时类型选 **BT之家 1LOU**，把 Cookie 粘到「Cookie」框（或用 `ONELOU_COOKIE` 设全局默认）。
+
+> Cookie 会过期，过期后历史记录里会出现 `login/cookie expired` 类错误，重新复制一份即可。
+> 为降低风控，1lou 订阅建议间隔 ≥30 分钟；单次最多处理 `MAX_ITEMS_PER_RUN` 个新帖。
+
+dmhy / Nyaa 这类**本身带 magnet 的 RSS** 不需要 Cookie，直接填 RSS 地址即可。
+
 ## 关于风控与 Cloudflare
 
 - **不要把间隔设太短**：同站最小间隔由 `HOST_MIN_INTERVAL`（默认 30s）+ `FETCH_JITTER_SECONDS`
@@ -93,7 +115,9 @@ app/
   security.py         密码哈希 + 签名会话 Cookie + 登录限速
   database.py/crud.py SQLite 存储（订阅、历史）
   fetcher.py          抓取：限速 + 抖动 + UA 轮换 + cloudscraper/FlareSolverr + 退避
-  rss.py              RSS 解析 + magnet/种子/infohash 提取 + 正则过滤
+  rss.py              RSS 解析 + magnet/种子/infohash 提取 + 正则过滤（dmhy/nyaa/通用）
+  onelou.py           1lou 抓取：列表页→帖子→下载 .torrent→转磁力（需 Cookie）
+  torrent.py          纯标准库 bencode 解析 + .torrent→magnet 转换
   clouddrive_client.py CloudDrive2 gRPC 封装（AddOfflineFiles）
   scheduler.py        APScheduler：每分钟 tick，到期订阅串行处理
   static/             网页 UI

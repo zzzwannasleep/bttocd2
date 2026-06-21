@@ -88,24 +88,20 @@ def _fetch_flaresolverr(url: str) -> str:
     return data["solution"]["response"]
 
 
-def fetch_text(url: str) -> str:
-    """Fetch a URL as text, honoring rate limits and Cloudflare protection."""
+def _do_get(url: str, cookie: str = "", accept: str = "*/*"):
+    """Shared request path: rate-limit, headers, cooldown on block."""
     host = _host(url)
     if not host:
         raise FetchError(f"Invalid URL: {url}")
     _respect_rate_limit(host)
 
-    if settings.flaresolverr_url:
-        try:
-            return _fetch_flaresolverr(url)
-        except Exception as exc:  # fall back to cloudscraper
-            log.warning("FlareSolverr failed (%s); falling back to cloudscraper", exc)
-
     headers = {
         "User-Agent": random.choice(settings.user_agents),
-        "Accept": "application/rss+xml, application/xml, text/xml, */*;q=0.8",
+        "Accept": accept,
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
+    if cookie:
+        headers["Cookie"] = cookie
     try:
         resp = _session.get(url, headers=headers, timeout=settings.request_timeout)
     except Exception as exc:
@@ -113,9 +109,26 @@ def fetch_text(url: str) -> str:
         raise FetchError(f"request failed: {exc}") from exc
 
     if resp.status_code in (403, 429, 503):
-        # Likely Cloudflare or rate limit — back off hard.
         _cool_down(host, settings.host_min_interval * 4)
         raise FetchError(f"blocked (HTTP {resp.status_code}) — possible Cloudflare/rate limit")
     if resp.status_code >= 400:
         raise FetchError(f"HTTP {resp.status_code}")
-    return resp.text
+    return resp
+
+
+def fetch_text(url: str, cookie: str = "") -> str:
+    """Fetch a URL as text, honoring rate limits and Cloudflare protection."""
+    if settings.flaresolverr_url:
+        try:
+            _respect_rate_limit(_host(url))
+            return _fetch_flaresolverr(url)
+        except FetchError:
+            raise
+        except Exception as exc:  # fall back to cloudscraper
+            log.warning("FlareSolverr failed (%s); falling back to cloudscraper", exc)
+    return _do_get(url, cookie, "application/rss+xml, application/xml, text/xml, text/html, */*;q=0.8").text
+
+
+def fetch_bytes(url: str, cookie: str = "") -> bytes:
+    """Fetch raw bytes (e.g. a .torrent). Always via cloudscraper, never FlareSolverr."""
+    return _do_get(url, cookie, "application/x-bittorrent, application/octet-stream, */*").content

@@ -94,6 +94,14 @@ async function loadItems() {
 // --------------------------------------------------------------------------- //
 // Modal
 // --------------------------------------------------------------------------- //
+function syncKindUI() {
+  const isOneLou = $('f-kind').value === '1lou' ||
+    ($('f-kind').value === 'auto' && /1lou\./i.test($('f-url').value));
+  $('onelou-hint').classList.toggle('hidden', !isOneLou);
+  $('cookie-label').classList.toggle('hidden', !isOneLou);
+  $('url-label').firstChild.textContent = isOneLou ? '列表页地址' : '地址';
+}
+
 function openModal(feed) {
   $('modal-title').textContent = feed ? '编辑订阅' : '新增订阅';
   $('feed-id').value = feed ? feed.id : '';
@@ -104,9 +112,11 @@ function openModal(feed) {
   $('f-folder').value = feed ? feed.target_folder : '';
   $('f-include').value = feed ? feed.include_regex : '';
   $('f-exclude').value = feed ? feed.exclude_regex : '';
+  $('f-cookie').value = feed ? (feed.cookie || '') : '';
   $('f-enabled').checked = feed ? !!feed.enabled : true;
   $('form-err').textContent = '';
   $('preview-out').classList.add('hidden');
+  syncKindUI();
   $('modal').classList.remove('hidden');
 }
 function closeModal() { $('modal').classList.add('hidden'); }
@@ -120,6 +130,7 @@ function formPayload() {
     target_folder: $('f-folder').value.trim() || '/',
     include_regex: $('f-include').value.trim(),
     exclude_regex: $('f-exclude').value.trim(),
+    cookie: $('f-cookie').value.trim(),
     enabled: $('f-enabled').checked,
   };
 }
@@ -128,6 +139,8 @@ function formPayload() {
 // Events
 // --------------------------------------------------------------------------- //
 $('new-feed').addEventListener('click', () => openModal(null));
+$('f-kind').addEventListener('change', syncKindUI);
+$('f-url').addEventListener('input', syncKindUI);
 $('cancel-btn').addEventListener('click', closeModal);
 $('logout').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }); location.href = '/login'; });
 $('refresh-items').addEventListener('click', loadItems);

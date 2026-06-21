@@ -93,6 +93,7 @@ class FeedBody(BaseModel):
     include_regex: str = Field(default="", max_length=500)
     exclude_regex: str = Field(default="", max_length=500)
     target_folder: str = Field(default="/", max_length=500)
+    cookie: str = Field(default="", max_length=8000)
     enabled: bool = True
 
     @field_validator("url")

@@ -61,6 +61,9 @@ label input, label select { color: var(--text); }
 .modal-card { width: 560px; max-width: 100%; }
 .hidden { display: none !important; }
 .preview { background: var(--bg); padding: 12px; border-radius: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+.hint { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; color: var(--muted); line-height: 1.6; margin: 4px 0 10px; }
+.hint strong { color: var(--text); }
+code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 12px 18px; border-radius: 10px; }
 

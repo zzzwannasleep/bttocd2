@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS feeds (
     include_regex   TEXT NOT NULL DEFAULT '',
     exclude_regex   TEXT NOT NULL DEFAULT '',
     target_folder   TEXT NOT NULL DEFAULT '/',
+    cookie          TEXT NOT NULL DEFAULT '',
     enabled         INTEGER NOT NULL DEFAULT 1,
     last_checked    REAL NOT NULL DEFAULT 0,
     last_status     TEXT NOT NULL DEFAULT '',
@@ -73,6 +74,10 @@ CREATE INDEX IF NOT EXISTS idx_items_infohash ON items(infohash);
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        # Lightweight migration: add columns introduced after first release.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(feeds)")}
+        if "cookie" not in cols:
+            conn.execute("ALTER TABLE feeds ADD COLUMN cookie TEXT NOT NULL DEFAULT ''")
 
 
 def now() -> float:

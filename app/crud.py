@@ -30,8 +30,8 @@ def create_feed(data: dict[str, Any]) -> dict[str, Any]:
         cur = conn.execute(
             """INSERT INTO feeds
                (name, url, kind, interval_minutes, include_regex, exclude_regex,
-                target_folder, enabled, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                target_folder, cookie, enabled, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 data["name"],
                 data["url"],
@@ -40,6 +40,7 @@ def create_feed(data: dict[str, Any]) -> dict[str, Any]:
                 data.get("include_regex", ""),
                 data.get("exclude_regex", ""),
                 data.get("target_folder", "/"),
+                data.get("cookie", ""),
                 1 if data.get("enabled", True) else 0,
                 now(),
             ),
@@ -51,7 +52,7 @@ def create_feed(data: dict[str, Any]) -> dict[str, Any]:
 def update_feed(feed_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
     fields = [
         "name", "url", "kind", "interval_minutes", "include_regex",
-        "exclude_regex", "target_folder", "enabled",
+        "exclude_regex", "target_folder", "cookie", "enabled",
     ]
     sets, vals = [], []
     for f in fields:

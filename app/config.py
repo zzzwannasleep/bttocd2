@@ -46,6 +46,10 @@ class Settings:
     cd2_password: str = os.getenv("CD2_PASSWORD", "")
     default_target_folder: str = os.getenv("DEFAULT_TARGET_FOLDER", "/")
 
+    # Fallback login cookie for 1lou-style sites that gate .torrent downloads.
+    # Per-feed cookie takes precedence; this is the default when a feed has none.
+    onelou_cookie: str = os.getenv("ONELOU_COOKIE", "")
+
     # --- anti rate-limit / anti Cloudflare ---
     # Minimum seconds between two requests to the SAME host.
     host_min_interval: int = int(os.getenv("HOST_MIN_INTERVAL", "30"))

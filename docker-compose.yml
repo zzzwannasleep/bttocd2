@@ -19,6 +19,8 @@ services:
       CD2_USERNAME: "${CD2_USERNAME:-}"
       CD2_PASSWORD: "${CD2_PASSWORD:-}"
       DEFAULT_TARGET_FOLDER: "${DEFAULT_TARGET_FOLDER:-/}"
+      # 1lou 等需登录站点的默认 Cookie（订阅里可单独覆盖）
+      ONELOU_COOKIE: "${ONELOU_COOKIE:-}"
 
       # --- 风控 / 反 Cloudflare ---
       HOST_MIN_INTERVAL: "30"        # 同一站点两次请求最小间隔（秒）
