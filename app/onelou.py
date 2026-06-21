@@ -7,10 +7,10 @@ The site has no native RSS and gates .torrent attachments behind login, so:
      (using the operator's login Cookie).
   4. Convert the torrent to a magnet locally (see torrent.py).
 
-The returned magnet is what gets pushed to CloudDrive2.
+The returned magnet is what gets pushed to the configured target (CloudDrive2 today).
 
-A per-feed `cookie` (copied from a logged-in browser) is required, because guests
-cannot download attachments. Set it on the feed, or fall back to ONELOU_COOKIE.
+Attachments are public, so no login is needed. A per-feed `cookie` is optional and
+only used if supplied (restricted board / higher limits); ONELOU_COOKIE is the fallback.
 """
 from __future__ import annotations
 
@@ -97,9 +97,9 @@ def fetch_new_items(feed: dict, *, dry_run: bool, cap: int) -> tuple[list[dict],
     from . import crud  # local import avoids a cycle
 
     base = _base(feed["url"])
+    # Attachments are public — a cookie is optional and only used if the operator
+    # supplied one (e.g. for a restricted board or to raise download limits).
     cookie = feed.get("cookie") or settings.onelou_cookie
-    if not cookie and not dry_run:
-        raise FetchError("1lou needs a login Cookie (set it on the feed)")
 
     html = fetch_text(feed["url"], cookie=cookie)
     threads = _list_threads(html)

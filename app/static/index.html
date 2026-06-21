@@ -8,86 +8,126 @@
 </head>
 <body>
   <header>
-    <div class="brand">bt2cd2 <span class="muted">RSS → CloudDrive2</span></div>
+    <div class="brand">
+      <span class="logo">⬇</span>
+      <div>
+        <div class="brand-name">bt2cd2</div>
+        <div class="brand-tag">BT 资源解析 · 分发</div>
+      </div>
+    </div>
     <div class="header-right">
-      <span id="cd2-status" class="badge">CD2: …</span>
+      <span id="target-status" class="badge" title="当前分发目标">目标: …</span>
       <button class="ghost" id="logout">退出</button>
     </div>
   </header>
 
   <main>
-    <section class="card">
-      <div class="row-between">
-        <h2>RSS 订阅源</h2>
-        <button id="new-feed">+ 新增订阅</button>
-      </div>
-      <div id="stats" class="muted small"></div>
-      <table id="feeds-table">
-        <thead>
-          <tr>
-            <th>名称</th><th>地址</th><th>间隔</th><th>目标文件夹</th>
-            <th>状态</th><th>启用</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <!-- Dashboard -->
+    <section class="cards">
+      <div class="stat"><div class="stat-val" id="s-sources">0</div><div class="stat-label">解析源</div></div>
+      <div class="stat"><div class="stat-val" id="s-enabled">0</div><div class="stat-label">启用中</div></div>
+      <div class="stat"><div class="stat-val ok" id="s-pushed">0</div><div class="stat-label">已分发</div></div>
+      <div class="stat"><div class="stat-val bad" id="s-failed">0</div><div class="stat-label">失败</div></div>
     </section>
 
+    <!-- Sources -->
     <section class="card">
       <div class="row-between">
-        <h2>推送记录</h2>
-        <button class="ghost" id="refresh-items">刷新</button>
+        <h2>解析源</h2>
+        <div class="toolbar">
+          <button class="ghost" id="check-all">检查全部</button>
+          <button id="new-feed">+ 新增源</button>
+        </div>
       </div>
-      <table id="items-table">
-        <thead><tr><th>时间</th><th>标题</th><th>状态</th><th>信息</th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <div id="anti-info" class="muted small"></div>
+      <div class="table-wrap">
+        <table id="feeds-table">
+          <thead>
+            <tr><th>源</th><th>地址</th><th>间隔</th><th>分发到</th><th>状态</th><th>启用</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="feeds-empty" class="empty hidden">还没有解析源，点「+ 新增源」添加一个 RSS 或 1lou 列表页。</div>
+    </section>
+
+    <!-- History -->
+    <section class="card">
+      <div class="row-between">
+        <h2>分发记录</h2>
+        <div class="toolbar">
+          <select id="hist-filter" class="mini">
+            <option value="">全部状态</option>
+            <option value="ok">成功</option>
+            <option value="failed">失败</option>
+          </select>
+          <button class="ghost" id="refresh-items">刷新</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="items-table">
+          <thead><tr><th>时间</th><th>标题</th><th>状态</th><th>信息</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="items-empty" class="empty hidden">暂无记录。</div>
     </section>
   </main>
 
-  <!-- Feed editor modal -->
+  <!-- Editor modal -->
   <div id="modal" class="modal hidden">
     <form class="card modal-card" id="feed-form">
-      <h2 id="modal-title">新增订阅</h2>
+      <div class="row-between">
+        <h2 id="modal-title">新增源</h2>
+        <button type="button" class="icon-btn" id="modal-close">✕</button>
+      </div>
+
+      <div class="section-label">解析</div>
       <input type="hidden" id="feed-id" />
-      <label>名称<input id="f-name" required maxlength="120" placeholder="例如 dmhy-动画" /></label>
-      <label id="url-label">地址<input id="f-url" required placeholder="https://share.dmhy.org/topics/rss/rss.xml" /></label>
+      <label>名称<input id="f-name" required maxlength="120" placeholder="例如 dmhy-动画 / 1lou-最新电影" /></label>
       <div class="grid2">
         <label>类型
           <select id="f-kind">
             <option value="auto">自动识别</option>
             <option value="dmhy">动漫花园 dmhy（RSS）</option>
-            <option value="1lou">BT之家 1LOU（种子站，需 Cookie）</option>
+            <option value="1lou">BT之家 1LOU（种子站）</option>
             <option value="nyaa">Nyaa（RSS）</option>
             <option value="generic">通用 RSS</option>
           </select>
         </label>
         <label>轮询间隔（分钟）<input id="f-interval" type="number" min="5" max="1440" value="30" /></label>
       </div>
+      <label id="url-label">地址<input id="f-url" required placeholder="https://share.dmhy.org/topics/rss/rss.xml" /></label>
       <p id="onelou-hint" class="hint hidden">
-        1lou 没有 RSS：这里填<strong>列表页地址</strong>（如最新电影
-        <code>https://www.1lou.me/forum-1.htm</code>，或某个搜索/分类页）。程序会进入每个帖子下载
-        <code>.torrent</code> 并转成磁力推给 CD2。<br />
-        下载附件需要登录，请在下方粘贴你登录后浏览器里的 <strong>Cookie</strong>。
+        1lou 没有 RSS：填<strong>列表页地址</strong>（如最新电影 <code>https://www.1lou.me/forum-1.htm</code>，
+        或某个分类/搜索页）。程序自动进帖下载 <code>.torrent</code> 并转成磁力分发。附件无需登录；
+        个别受限板块才需要在下方填 Cookie。
       </p>
-      <label>目标文件夹（CD2 路径）<input id="f-folder" placeholder="/115网盘/离线下载" /></label>
-      <label id="cookie-label" class="hidden">Cookie（仅 1lou 等需登录站点）
-        <input id="f-cookie" placeholder="从已登录的浏览器开发者工具 Network 里复制完整 Cookie" />
-      </label>
+
+      <div class="section-label">过滤（可选）</div>
       <div class="grid2">
-        <label>标题包含（正则，可空）<input id="f-include" placeholder="例如 1080p|简体" /></label>
-        <label>标题排除（正则，可空）<input id="f-exclude" placeholder="例如 720p|繁體" /></label>
+        <label>标题包含（正则）<input id="f-include" placeholder="1080p|简体" /></label>
+        <label>标题排除（正则）<input id="f-exclude" placeholder="720p|繁體" /></label>
       </div>
-      <label class="checkbox"><input id="f-enabled" type="checkbox" checked /> 启用</label>
+
+      <div class="section-label">分发</div>
+      <label>目标文件夹（CloudDrive2 路径）<input id="f-folder" placeholder="/115网盘/离线下载" /></label>
+      <label id="cookie-label" class="hidden">Cookie（仅受限站点需要）
+        <input id="f-cookie" placeholder="从已登录浏览器的请求头复制完整 Cookie，可留空" />
+      </label>
+      <label class="switch-row"><span>启用该源</span>
+        <span class="switch"><input id="f-enabled" type="checkbox" checked /><span class="slider"></span></span>
+      </label>
+
       <p id="form-err" class="error"></p>
-      <div class="row-between">
-        <button type="button" class="ghost" id="preview-btn">预览（不推送）</button>
-        <div>
+      <pre id="preview-out" class="preview hidden"></pre>
+      <div class="row-between modal-actions">
+        <button type="button" class="ghost" id="preview-btn">预览（不分发）</button>
+        <div class="toolbar">
           <button type="button" class="ghost" id="cancel-btn">取消</button>
-          <button type="submit">保存</button>
+          <button type="submit" id="save-btn">保存</button>
         </div>
       </div>
-      <pre id="preview-out" class="preview hidden"></pre>
     </form>
   </div>
 
