@@ -52,6 +52,32 @@ docker compose logs -f bt2cd2   # 若未设 WEB_PASSWORD，这里能看到自动
   并设置 `FLARESOLVERR_URL=http://flaresolverr:8191`。
 - **换 IP**：设置 `CRAWL_PROXY` 走代理可进一步降低封禁概率。
 
+## 自动构建镜像（GitHub Actions）
+
+仓库内置 `.github/workflows/docker-build.yml`，push 到 `main` 或打 `v*` tag 时自动
+构建多架构（amd64 / arm64）镜像。
+
+- **GHCR（默认，免配置）**：用内置 `GITHUB_TOKEN` 推送到
+  `ghcr.io/zzzwannasleep/bttocd2`，**无需任何 secret**。
+  首次推送后到仓库 *Packages* 把该包设为 Public 即可公开拉取。
+- **Docker Hub（可选）**：在仓库 *Settings → Secrets and variables → Actions* 添加：
+
+  | Secret | 说明 |
+  |--------|------|
+  | `DOCKERHUB_USERNAME` | Docker Hub 用户名 |
+  | `DOCKERHUB_TOKEN` | Docker Hub Access Token（在 Docker Hub *Account Settings → Security* 生成） |
+
+  设置后会同时推送到 `docker.io/<用户名>/bttocd2`；不设则自动跳过这一步。
+
+拉取并运行（把 compose 里的 `build: .` 换成镜像即可）：
+
+```yaml
+services:
+  bt2cd2:
+    image: ghcr.io/zzzwannasleep/bttocd2:latest
+    # ...其余 environment / ports / volumes 同 docker-compose.yml
+```
+
 ## 安全建议
 
 - 生产务必设置强 `WEB_PASSWORD`；不要把 8080 直接暴露公网，建议放反代 + HTTPS。
