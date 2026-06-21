@@ -16,7 +16,7 @@
       </div>
     </div>
     <div class="header-right">
-      <span id="target-status" class="badge" title="当前分发目标">目标: …</span>
+      <span id="target-status" class="badge" title="分发目标">目标: …</span>
       <button class="ghost" id="logout">退出</button>
     </div>
   </header>
@@ -25,15 +25,30 @@
     <!-- Dashboard -->
     <section class="cards">
       <div class="stat"><div class="stat-val" id="s-sources">0</div><div class="stat-label">解析源</div></div>
-      <div class="stat"><div class="stat-val" id="s-enabled">0</div><div class="stat-label">启用中</div></div>
+      <div class="stat"><div class="stat-val" id="s-targets">0</div><div class="stat-label">分发目标</div></div>
       <div class="stat"><div class="stat-val ok" id="s-pushed">0</div><div class="stat-label">已分发</div></div>
       <div class="stat"><div class="stat-val bad" id="s-failed">0</div><div class="stat-label">失败</div></div>
+    </section>
+
+    <!-- Targets -->
+    <section class="card">
+      <div class="row-between">
+        <div><h2>分发目标</h2><div class="muted small">下载器 / 网盘客户端，解析到的资源发往这里</div></div>
+        <button id="new-target">+ 新增目标</button>
+      </div>
+      <div class="table-wrap">
+        <table id="targets-table">
+          <thead><tr><th>名称</th><th>类型</th><th>地址</th><th>启用</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="targets-empty" class="empty hidden">还没有分发目标，先新增一个 CloudDrive2 / qBittorrent / Transmission。</div>
     </section>
 
     <!-- Sources -->
     <section class="card">
       <div class="row-between">
-        <h2>解析源</h2>
+        <div><h2>解析源</h2><div class="muted small">RSS（dmhy/Nyaa）或 1lou 列表页，定时解析出磁力</div></div>
         <div class="toolbar">
           <button class="ghost" id="check-all">检查全部</button>
           <button id="new-feed">+ 新增源</button>
@@ -74,7 +89,7 @@
     </section>
   </main>
 
-  <!-- Editor modal -->
+  <!-- Source modal -->
   <div id="modal" class="modal hidden">
     <form class="card modal-card" id="feed-form">
       <div class="row-between">
@@ -111,7 +126,10 @@
       </div>
 
       <div class="section-label">分发</div>
-      <label>目标文件夹（CloudDrive2 路径）<input id="f-folder" placeholder="/115网盘/离线下载" /></label>
+      <label>分发到（目标）
+        <select id="f-target"></select>
+      </label>
+      <label id="loc-label">目标位置<input id="f-folder" placeholder="/115网盘/离线下载" /></label>
       <label id="cookie-label" class="hidden">Cookie（仅受限站点需要）
         <input id="f-cookie" placeholder="从已登录浏览器的请求头复制完整 Cookie，可留空" />
       </label>
@@ -126,6 +144,37 @@
         <div class="toolbar">
           <button type="button" class="ghost" id="cancel-btn">取消</button>
           <button type="submit" id="save-btn">保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Target modal -->
+  <div id="target-modal" class="modal hidden">
+    <form class="card modal-card" id="target-form">
+      <div class="row-between">
+        <h2 id="target-modal-title">新增目标</h2>
+        <button type="button" class="icon-btn" id="target-close">✕</button>
+      </div>
+      <input type="hidden" id="t-id" />
+      <label>名称<input id="t-name" required maxlength="120" placeholder="例如 家里NAS-qB / CD2-115离线" /></label>
+      <label>类型
+        <select id="t-type">
+          <option value="cd2">CloudDrive2 离线</option>
+          <option value="qbittorrent">qBittorrent</option>
+          <option value="transmission">Transmission</option>
+        </select>
+      </label>
+      <div id="t-fields"></div>
+      <label class="switch-row"><span>启用该目标</span>
+        <span class="switch"><input id="t-enabled" type="checkbox" checked /><span class="slider"></span></span>
+      </label>
+      <p id="target-err" class="error"></p>
+      <div class="row-between modal-actions">
+        <button type="button" class="ghost" id="t-test">测试连接</button>
+        <div class="toolbar">
+          <button type="button" class="ghost" id="t-cancel">取消</button>
+          <button type="submit" id="t-save">保存</button>
         </div>
       </div>
     </form>

@@ -1,14 +1,106 @@
-"""Database access for feeds and processed items."""
+"""Database access for targets, feeds and processed items."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
+from . import targets as targets_mod
+from .config import settings
 from .database import get_conn, now
 
 
 def _row(r: sqlite3.Row | None) -> dict[str, Any] | None:
     return dict(r) if r is not None else None
+
+
+# --------------------------------------------------------------------------- #
+# Targets
+# --------------------------------------------------------------------------- #
+def _target_dict(r: sqlite3.Row, *, mask: bool) -> dict[str, Any]:
+    d = dict(r)
+    config = json.loads(d.pop("config_json", "{}") or "{}")
+    if mask:
+        secrets = targets_mod.secret_keys(d["type"])
+        masked = {}
+        for k, v in config.items():
+            if k in secrets:
+                masked["has_" + k] = bool(v)
+            else:
+                masked[k] = v
+        config = masked
+    d["config"] = config
+    return d
+
+
+def list_targets(*, mask: bool = True) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM targets ORDER BY id").fetchall()
+    return [_target_dict(r, mask=mask) for r in rows]
+
+
+def get_target(target_id: int, *, mask: bool = True) -> dict[str, Any] | None:
+    with get_conn() as conn:
+        r = conn.execute("SELECT * FROM targets WHERE id=?", (target_id,)).fetchone()
+    return _target_dict(r, mask=mask) if r else None
+
+
+def create_target(data: dict[str, Any]) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO targets (name, type, config_json, enabled, created_at) VALUES (?,?,?,?,?)",
+            (data["name"], data["type"], json.dumps(data.get("config", {})),
+             1 if data.get("enabled", True) else 0, now()),
+        )
+        tid = cur.lastrowid
+    return get_target(tid)  # type: ignore[return-value]
+
+
+def update_target(target_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
+    existing = get_target(target_id, mask=False)
+    if not existing:
+        return None
+    ttype = data.get("type", existing["type"])
+    # Merge config: a blank secret field means "keep the stored value".
+    new_config = dict(existing["config"])
+    incoming = data.get("config", {})
+    secrets = targets_mod.secret_keys(ttype)
+    for k, v in incoming.items():
+        if k in secrets and (v is None or v == ""):
+            continue  # keep existing secret
+        new_config[k] = v
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE targets SET name=?, type=?, config_json=?, enabled=? WHERE id=?",
+            (data.get("name", existing["name"]), ttype, json.dumps(new_config),
+             1 if data.get("enabled", existing["enabled"]) else 0, target_id),
+        )
+    return get_target(target_id)
+
+
+def delete_target(target_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM targets WHERE id=?", (target_id,))
+
+
+def seed_default_target() -> None:
+    """On first run, create a CD2 target from env and attach orphan feeds to it."""
+    with get_conn() as conn:
+        if conn.execute("SELECT COUNT(*) FROM targets").fetchone()[0] > 0:
+            return
+        if not (settings.cd2_username and settings.cd2_password):
+            return
+        config = {
+            "url": settings.cd2_url,
+            "username": settings.cd2_username,
+            "password": settings.cd2_password,
+            "folder": settings.default_target_folder,
+        }
+        cur = conn.execute(
+            "INSERT INTO targets (name, type, config_json, enabled, created_at) VALUES (?,?,?,?,?)",
+            ("CloudDrive2", "cd2", json.dumps(config), 1, now()),
+        )
+        conn.execute("UPDATE feeds SET target_id=? WHERE target_id IS NULL", (cur.lastrowid,))
 
 
 # --------------------------------------------------------------------------- #
@@ -30,8 +122,8 @@ def create_feed(data: dict[str, Any]) -> dict[str, Any]:
         cur = conn.execute(
             """INSERT INTO feeds
                (name, url, kind, interval_minutes, include_regex, exclude_regex,
-                target_folder, cookie, enabled, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                target_id, target_folder, cookie, enabled, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 data["name"],
                 data["url"],
@@ -39,6 +131,7 @@ def create_feed(data: dict[str, Any]) -> dict[str, Any]:
                 int(data["interval_minutes"]),
                 data.get("include_regex", ""),
                 data.get("exclude_regex", ""),
+                data.get("target_id"),
                 data.get("target_folder", "/"),
                 data.get("cookie", ""),
                 1 if data.get("enabled", True) else 0,
@@ -52,7 +145,7 @@ def create_feed(data: dict[str, Any]) -> dict[str, Any]:
 def update_feed(feed_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
     fields = [
         "name", "url", "kind", "interval_minutes", "include_regex",
-        "exclude_regex", "target_folder", "cookie", "enabled",
+        "exclude_regex", "target_id", "target_folder", "cookie", "enabled",
     ]
     sets, vals = [], []
     for f in fields:

@@ -11,7 +11,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import clouddrive_client, crud, onelou
+from . import crud, onelou, targets as targets_mod
 from .config import settings
 from .database import now
 from .fetcher import FetchError, fetch_text
@@ -20,6 +20,20 @@ from .rss import apply_filters, parse_feed
 log = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
+
+
+def _dispatch(feed: dict, urls: str) -> None:
+    """Send resolved URLs to the feed's configured target."""
+    tid = feed.get("target_id")
+    if not tid:
+        raise targets_mod.TargetError("该源未配置分发目标")
+    target_row = crud.get_target(tid, mask=False)
+    if not target_row:
+        raise targets_mod.TargetError("分发目标不存在（已被删除？）")
+    if not target_row["enabled"]:
+        raise targets_mod.TargetError(f"目标「{target_row['name']}」已停用")
+    target = targets_mod.make_target(target_row["type"], target_row["config"])
+    target.add(urls, feed.get("target_folder") or "")
 
 
 def _collect_rss(feed: dict, dry_run: bool) -> tuple[list[dict], int]:
@@ -64,7 +78,7 @@ def process_feed(feed: dict, *, dry_run: bool = False) -> dict:
                 summary["failed"] += 1
                 continue
             try:
-                clouddrive_client.add_offline(item["download"], feed["target_folder"])
+                _dispatch(feed, item["download"])
                 crud.record_item(feed_id, item, "ok")
                 summary["pushed"] += 1
             except Exception as exc:  # noqa: BLE001

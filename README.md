@@ -28,6 +28,22 @@ docker compose logs -f bt2cd2   # 若未设 WEB_PASSWORD，这里能看到自动
 
 > 容器访问宿主机上的 CD2：compose 已配置 `host.docker.internal`，`CD2_URL` 用
 > `http://host.docker.internal:19798` 即可。CD2 在另一台机器就直接填它的地址。
+> 若设置了 `CD2_*`，首次启动会自动创建一个名为 “CloudDrive2” 的默认分发目标。
+
+## 分发目标（下载器 / 网盘）
+
+本程序是「**解析 → 分发**」工具：解析源负责抓取磁力，**目标**负责接收。在网页
+「分发目标」区可添加任意多个目标，每个解析源在「分发到」里选一个目标。
+
+| 目标 | 说明 | 连接信息 | 位置字段 |
+|------|------|----------|----------|
+| **CloudDrive2** | 网盘离线（gRPC `AddOfflineFiles`） | 地址 / 账号 / 密码 | 网盘文件夹路径 |
+| **qBittorrent** | BT 下载器（Web API v2） | Web UI 地址 / 账号 / 密码 / 分类 | 保存路径 savepath |
+| **Transmission** | BT 下载器（RPC） | `…/transmission/rpc` 地址 / 账号 / 密码 | 下载目录 download-dir |
+
+- 目标密码在接口返回时**自动打码**，编辑时留空表示不修改。
+- 每个目标都能「**测试连接**」。源里的「目标位置」会覆盖目标默认位置，留空则用默认。
+- 想加新下载器只需在 `app/targets/` 加一个子类并在 `__init__.py` 注册（接口见 `base.py`）。
 
 ## 添加订阅
 
@@ -112,9 +128,9 @@ app/
   database.py/crud.py SQLite 存储（订阅、历史）
   fetcher.py          抓取：限速 + 抖动 + UA 轮换 + cloudscraper/FlareSolverr + 退避
   rss.py              RSS 解析 + magnet/种子/infohash 提取 + 正则过滤（dmhy/nyaa/通用）
-  onelou.py           1lou 抓取：列表页→帖子→下载 .torrent→转磁力（需 Cookie）
+  onelou.py           1lou 抓取：列表页→帖子→下载 .torrent→转磁力
   torrent.py          纯标准库 bencode 解析 + .torrent→magnet 转换
-  clouddrive_client.py CloudDrive2 gRPC 封装（AddOfflineFiles）
+  targets/            可插拔分发目标：base / cd2 / qbittorrent / transmission
   scheduler.py        APScheduler：每分钟 tick，到期订阅串行处理
   static/             网页 UI
 ```

@@ -2,6 +2,9 @@
 
 const $ = (id) => document.getElementById(id);
 let FEEDS = [];
+let TARGETS = [];
+let TYPES = [];          // target-type metadata from /api/target-types
+const typeMeta = (t) => TYPES.find((x) => x.type === t) || { fields: [], location_label: '目标位置', location_placeholder: '' };
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -16,7 +19,7 @@ async function api(path, opts = {}) {
 
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
-  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), 3200);
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), 3400);
 }
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) =>
@@ -25,21 +28,25 @@ function esc(s) {
 function fmtTime(epoch) { return epoch ? new Date(epoch * 1000).toLocaleString() : '—'; }
 
 const KIND_LABEL = { dmhy: 'dmhy', '1lou': '1LOU', nyaa: 'Nyaa', generic: '通用', auto: '自动' };
-function typeBadge(kind) {
+function kindBadge(kind) {
   const k = KIND_LABEL[kind] ? kind : 'auto';
   return `<span class="type-badge type-${k}">${esc(KIND_LABEL[k])}</span>`;
 }
+const TTYPE_LABEL = { cd2: 'CloudDrive2', qbittorrent: 'qBittorrent', transmission: 'Transmission' };
+function targetBadge(type) { return `<span class="type-badge type-${type === 'cd2' ? 'dmhy' : type === 'qbittorrent' ? '1lou' : 'nyaa'}">${esc(TTYPE_LABEL[type] || type)}</span>`; }
+function targetName(id) { const t = TARGETS.find((x) => x.id === id); return t ? t.name : '—'; }
 
 // --------------------------------------------------------------------------- //
 async function loadStatus() {
   try {
     const s = await api('/api/status');
+    const enabled = (s.targets || []).filter((t) => t.enabled).length;
     const b = $('target-status');
-    b.textContent = '目标 CD2: ' + (s.cd2.connected ? '已连接' : '未连接');
-    b.className = 'badge ' + (s.cd2.connected ? 'ok' : 'bad');
-    b.title = s.cd2.message + ' @ ' + s.cd2.url;
+    b.textContent = `目标 ${enabled}/${(s.targets || []).length}`;
+    b.className = 'badge ' + (enabled ? 'ok' : 'bad');
     $('s-pushed').textContent = s.counts.pushed;
     $('s-failed').textContent = s.counts.failed;
+    $('s-targets').textContent = (s.targets || []).length;
     const a = s.anti_block;
     $('anti-info').textContent =
       `防风控：同站最小间隔 ${a.host_min_interval}s + 抖动 ${a.fetch_jitter_seconds}s · 串行抓取` +
@@ -47,20 +54,142 @@ async function loadStatus() {
   } catch (_) {}
 }
 
+// --------------------------------------------------------------------------- //
+// Targets
+// --------------------------------------------------------------------------- //
+async function loadTargets() {
+  TARGETS = await api('/api/targets');
+  $('s-targets').textContent = TARGETS.length;
+  const tbody = $('targets-table').querySelector('tbody');
+  tbody.innerHTML = '';
+  $('targets-empty').classList.toggle('hidden', TARGETS.length > 0);
+  for (const t of TARGETS) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><b>${esc(t.name)}</b></td>
+      <td>${targetBadge(t.type)}</td>
+      <td class="trunc muted small" title="${esc(t.config.url || '')}">${esc(t.config.url || '—')}</td>
+      <td><label class="switch"><input type="checkbox" data-ttoggle="${t.id}" ${t.enabled ? 'checked' : ''}><span class="slider"></span></label></td>
+      <td><div class="row-actions">
+        <button class="ghost" data-tact="test" data-id="${t.id}">测试</button>
+        <button class="ghost" data-tact="edit" data-id="${t.id}">编辑</button>
+        <button class="danger" data-tact="del" data-id="${t.id}">删除</button>
+      </div></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderTargetFields(type, config) {
+  const meta = typeMeta(type);
+  const box = $('t-fields');
+  box.innerHTML = '';
+  for (const f of meta.fields) {
+    const isSecret = !!f.secret;
+    const hasVal = config && (isSecret ? config['has_' + f.key] : config[f.key]);
+    const val = (config && !isSecret) ? (config[f.key] || '') : '';
+    const ph = isSecret && hasVal ? '已设置，留空表示不修改' : (f.placeholder || '');
+    const label = document.createElement('label');
+    label.innerHTML = `${esc(f.label)}<input data-cfg="${f.key}" type="${isSecret ? 'password' : 'text'}"
+      value="${esc(val)}" placeholder="${esc(ph)}" autocomplete="off" />`;
+    box.appendChild(label);
+  }
+}
+
+function openTargetModal(target) {
+  $('target-modal-title').textContent = target ? '编辑目标' : '新增目标';
+  $('t-id').value = target ? target.id : '';
+  $('t-name').value = target ? target.name : '';
+  $('t-type').value = target ? target.type : 'cd2';
+  $('t-enabled').checked = target ? !!target.enabled : true;
+  $('target-err').textContent = '';
+  renderTargetFields($('t-type').value, target ? target.config : null);
+  $('target-modal').classList.remove('hidden');
+}
+function closeTargetModal() { $('target-modal').classList.add('hidden'); }
+
+function targetPayload() {
+  const config = {};
+  $('t-fields').querySelectorAll('[data-cfg]').forEach((el) => {
+    const v = el.value.trim();
+    if (v) config[el.dataset.cfg] = v;   // blank secret omitted → backend keeps old
+  });
+  return { name: $('t-name').value.trim(), type: $('t-type').value, config, enabled: $('t-enabled').checked };
+}
+
+$('new-target').addEventListener('click', () => openTargetModal(null));
+$('t-type').addEventListener('change', () => renderTargetFields($('t-type').value, null));
+$('t-cancel').addEventListener('click', closeTargetModal);
+$('target-close').addEventListener('click', closeTargetModal);
+$('target-modal').addEventListener('click', (e) => { if (e.target === $('target-modal')) closeTargetModal(); });
+
+$('t-test').addEventListener('click', async () => {
+  const id = $('t-id').value;
+  if (!id) { toast('请先保存目标后再测试'); return; }
+  $('t-test').disabled = true; $('t-test').textContent = '测试中…';
+  try {
+    const r = await api('/api/targets/' + id + '/test', { method: 'POST' });
+    toast(r.ok ? '连接成功: ' + r.message : '连接失败: ' + r.message);
+  } catch (err) { toast('测试失败: ' + err.message); }
+  finally { $('t-test').disabled = false; $('t-test').textContent = '测试连接'; }
+});
+
+$('target-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $('t-id').value, payload = targetPayload();
+  $('t-save').disabled = true;
+  try {
+    const saved = id
+      ? await api('/api/targets/' + id, { method: 'PUT', body: JSON.stringify(payload) })
+      : await api('/api/targets', { method: 'POST', body: JSON.stringify(payload) });
+    if (!id) $('t-id').value = saved.id;   // keep open so user can test
+    toast('已保存'); await loadTargets(); loadStatus();
+    if (!id) openTargetModal(saved); else closeTargetModal();
+  } catch (err) { $('target-err').textContent = err.message; }
+  finally { $('t-save').disabled = false; }
+});
+
+$('targets-table').addEventListener('change', async (e) => {
+  const id = e.target.dataset.ttoggle; if (!id) return;
+  const t = TARGETS.find((x) => String(x.id) === id); if (!t) return;
+  try {
+    await api('/api/targets/' + id, { method: 'PUT', body: JSON.stringify({ name: t.name, type: t.type, config: {}, enabled: e.target.checked }) });
+    toast(e.target.checked ? '已启用' : '已停用'); loadTargets(); loadStatus();
+  } catch (err) { toast('操作失败: ' + err.message); e.target.checked = !e.target.checked; }
+});
+
+$('targets-table').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  const id = btn.dataset.id, act = btn.dataset.tact;
+  if (act === 'del') {
+    if (!confirm('确认删除该目标？使用它的源会变成「未配置目标」。')) return;
+    await api('/api/targets/' + id, { method: 'DELETE' });
+    toast('已删除'); loadTargets(); loadFeeds(); loadStatus();
+  } else if (act === 'edit') {
+    openTargetModal(TARGETS.find((x) => String(x.id) === id));
+  } else if (act === 'test') {
+    btn.disabled = true; btn.textContent = '…';
+    try { const r = await api('/api/targets/' + id + '/test', { method: 'POST' }); toast(r.ok ? '连接成功: ' + r.message : '连接失败: ' + r.message); }
+    catch (err) { toast('测试失败: ' + err.message); }
+    finally { btn.disabled = false; btn.textContent = '测试'; }
+  }
+});
+
+// --------------------------------------------------------------------------- //
+// Feeds
+// --------------------------------------------------------------------------- //
 async function loadFeeds() {
   FEEDS = await api('/api/feeds');
   $('s-sources').textContent = FEEDS.length;
-  $('s-enabled').textContent = FEEDS.filter((f) => f.enabled).length;
   const tbody = $('feeds-table').querySelector('tbody');
   tbody.innerHTML = '';
   $('feeds-empty').classList.toggle('hidden', FEEDS.length > 0);
   for (const f of FEEDS) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><div class="cell-name">${typeBadge(f.kind)}<b>${esc(f.name)}</b></div></td>
+      <td><div class="cell-name">${kindBadge(f.kind)}<b>${esc(f.name)}</b></div></td>
       <td class="trunc" title="${esc(f.url)}">${esc(f.url)}</td>
       <td>${f.interval_minutes}m</td>
-      <td class="trunc" title="${esc(f.target_folder)}">${esc(f.target_folder || '/')}</td>
+      <td class="small">${f.target_id ? esc(targetName(f.target_id)) : '<span class="pill failed">未配置</span>'}</td>
       <td class="muted small" title="检查于 ${fmtTime(f.last_checked)}">${esc(f.last_status || '未检查')}</td>
       <td><label class="switch"><input type="checkbox" data-toggle="${f.id}" ${f.enabled ? 'checked' : ''}><span class="slider"></span></label></td>
       <td><div class="row-actions">
@@ -90,13 +219,29 @@ async function loadItems() {
   }
 }
 
-// --------------------------------------------------------------------------- //
 function syncKindUI() {
   const isOneLou = $('f-kind').value === '1lou' ||
     ($('f-kind').value === 'auto' && /1lou\./i.test($('f-url').value));
   $('onelou-hint').classList.toggle('hidden', !isOneLou);
   $('cookie-label').classList.toggle('hidden', !isOneLou);
   $('url-label').firstChild.textContent = isOneLou ? '列表页地址' : '地址';
+}
+
+function syncLocationLabel() {
+  const tid = parseInt($('f-target').value, 10);
+  const t = TARGETS.find((x) => x.id === tid);
+  const meta = t ? typeMeta(t.type) : null;
+  $('loc-label').firstChild.textContent = meta ? meta.location_label : '目标位置';
+  $('f-folder').placeholder = meta ? (meta.location_placeholder || '') : '';
+}
+
+function fillTargetSelect(selectedId) {
+  const sel = $('f-target');
+  sel.innerHTML = TARGETS.length
+    ? TARGETS.map((t) => `<option value="${t.id}">${esc(t.name)} · ${esc(TTYPE_LABEL[t.type] || t.type)}${t.enabled ? '' : '（停用）'}</option>`).join('')
+    : '<option value="">请先到上方「分发目标」新增一个</option>';
+  if (selectedId) sel.value = selectedId;
+  syncLocationLabel();
 }
 
 function openModal(feed) {
@@ -111,6 +256,7 @@ function openModal(feed) {
   $('f-exclude').value = feed ? feed.exclude_regex : '';
   $('f-cookie').value = feed ? (feed.cookie || '') : '';
   $('f-enabled').checked = feed ? !!feed.enabled : true;
+  fillTargetSelect(feed ? feed.target_id : (TARGETS[0] && TARGETS[0].id));
   $('form-err').textContent = '';
   $('preview-out').classList.add('hidden');
   syncKindUI();
@@ -119,11 +265,13 @@ function openModal(feed) {
 function closeModal() { $('modal').classList.add('hidden'); }
 
 function formPayload() {
+  const tid = parseInt($('f-target').value, 10);
   return {
     name: $('f-name').value.trim(),
     url: $('f-url').value.trim(),
     kind: $('f-kind').value,
     interval_minutes: parseInt($('f-interval').value, 10) || 30,
+    target_id: Number.isFinite(tid) ? tid : null,
     target_folder: $('f-folder').value.trim() || '/',
     include_regex: $('f-include').value.trim(),
     exclude_regex: $('f-exclude').value.trim(),
@@ -136,6 +284,7 @@ function formPayload() {
 $('new-feed').addEventListener('click', () => openModal(null));
 $('f-kind').addEventListener('change', syncKindUI);
 $('f-url').addEventListener('input', syncKindUI);
+$('f-target').addEventListener('change', syncLocationLabel);
 $('cancel-btn').addEventListener('click', closeModal);
 $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
@@ -162,7 +311,7 @@ $('feeds-table').addEventListener('change', async (e) => {
   const feed = FEEDS.find((f) => String(f.id) === id); if (!feed) return;
   try {
     await api('/api/feeds/' + id, { method: 'PUT', body: JSON.stringify({ ...feed, enabled: e.target.checked }) });
-    toast(e.target.checked ? '已启用' : '已暂停'); loadFeeds(); loadStatus();
+    toast(e.target.checked ? '已启用' : '已暂停'); loadFeeds();
   } catch (err) { toast('操作失败: ' + err.message); e.target.checked = !e.target.checked; }
 });
 
@@ -172,7 +321,7 @@ $('feeds-table').addEventListener('click', async (e) => {
   if (act === 'del') {
     if (!confirm('确认删除该源？其历史记录也会清除。')) return;
     await api('/api/feeds/' + id, { method: 'DELETE' });
-    toast('已删除'); loadFeeds(); loadStatus();
+    toast('已删除'); loadFeeds();
   } else if (act === 'edit') {
     openModal(FEEDS.find((f) => String(f.id) === id));
   } else if (act === 'check') {
@@ -203,14 +352,18 @@ $('feed-form').addEventListener('submit', async (e) => {
   try {
     if (id) await api('/api/feeds/' + id, { method: 'PUT', body: JSON.stringify(payload) });
     else await api('/api/feeds', { method: 'POST', body: JSON.stringify(payload) });
-    closeModal(); toast('已保存'); loadFeeds(); loadStatus();
+    closeModal(); toast('已保存'); loadFeeds();
   } catch (err) { $('form-err').textContent = err.message; }
   finally { $('save-btn').disabled = false; }
 });
 
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeTargetModal(); } });
 
 // initial load + light polling
-loadStatus(); loadFeeds(); loadItems();
-setInterval(() => { loadStatus(); loadFeeds(); }, 30000);
+(async () => {
+  try { TYPES = await api('/api/target-types'); } catch (_) {}
+  await loadTargets();
+  loadStatus(); loadFeeds(); loadItems();
+})();
+setInterval(() => { loadStatus(); loadTargets(); loadFeeds(); }, 30000);
 setInterval(loadItems, 60000);

@@ -7,12 +7,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
+from typing import Literal
+
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import clouddrive_client, crud, scheduler, security
+from . import crud, scheduler, security, targets as targets_mod
 from .config import settings
 from .database import init_db
 
@@ -28,6 +30,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    crud.seed_default_target()
     scheduler.start()
     log.info("bt2cd2 started. Web user: %s", settings.web_username)
     yield
@@ -92,6 +95,7 @@ class FeedBody(BaseModel):
     interval_minutes: int = Field(default=settings.default_interval_minutes, ge=5, le=1440)
     include_regex: str = Field(default="", max_length=500)
     exclude_regex: str = Field(default="", max_length=500)
+    target_id: int | None = None
     target_folder: str = Field(default="/", max_length=500)
     cookie: str = Field(default="", max_length=8000)
     enabled: bool = True
@@ -165,10 +169,13 @@ def get_items(feed_id: int | None = None, limit: int = 200, user: str = Depends(
 
 @app.get("/api/status")
 def status(user: str = Depends(require_login)):
-    connected, msg = clouddrive_client.check_connection()
+    targets = crud.list_targets()
     return {
-        "cd2": {"url": settings.cd2_url, "connected": connected, "message": msg},
         "counts": crud.counts(),
+        "targets": [
+            {"id": t["id"], "name": t["name"], "type": t["type"], "enabled": t["enabled"]}
+            for t in targets
+        ],
         "anti_block": {
             "host_min_interval": settings.host_min_interval,
             "fetch_jitter_seconds": settings.fetch_jitter_seconds,
@@ -176,6 +183,58 @@ def status(user: str = Depends(require_login)):
             "proxy": bool(settings.http_proxy),
         },
     }
+
+
+# --------------------------------------------------------------------------- #
+# Targets
+# --------------------------------------------------------------------------- #
+class TargetBody(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    type: Literal["cd2", "qbittorrent", "transmission"]
+    config: dict = Field(default_factory=dict)
+    enabled: bool = True
+
+
+@app.get("/api/target-types")
+def target_types(user: str = Depends(require_login)):
+    return targets_mod.TYPES
+
+
+@app.get("/api/targets")
+def get_targets(user: str = Depends(require_login)):
+    return crud.list_targets()
+
+
+@app.post("/api/targets")
+def add_target(body: TargetBody, user: str = Depends(require_login)):
+    return crud.create_target(body.model_dump())
+
+
+@app.put("/api/targets/{target_id}")
+def edit_target(target_id: int, body: TargetBody, user: str = Depends(require_login)):
+    updated = crud.update_target(target_id, body.model_dump())
+    if not updated:
+        raise HTTPException(404, "target not found")
+    return updated
+
+
+@app.delete("/api/targets/{target_id}")
+def remove_target(target_id: int, user: str = Depends(require_login)):
+    crud.delete_target(target_id)
+    return {"ok": True}
+
+
+@app.post("/api/targets/{target_id}/test")
+def test_target(target_id: int, user: str = Depends(require_login)):
+    row = crud.get_target(target_id, mask=False)
+    if not row:
+        raise HTTPException(404, "target not found")
+    try:
+        target = targets_mod.make_target(row["type"], row["config"])
+        ok, msg = target.check()
+    except Exception as exc:  # noqa: BLE001
+        ok, msg = False, str(exc)
+    return {"ok": ok, "message": msg}
 
 
 # --------------------------------------------------------------------------- #

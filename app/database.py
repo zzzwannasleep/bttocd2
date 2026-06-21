@@ -36,6 +36,15 @@ def get_conn() -> Iterator[sqlite3.Connection]:
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS targets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    type        TEXT NOT NULL DEFAULT 'cd2',
+    config_json TEXT NOT NULL DEFAULT '{}',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS feeds (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT NOT NULL,
@@ -44,6 +53,7 @@ CREATE TABLE IF NOT EXISTS feeds (
     interval_minutes INTEGER NOT NULL DEFAULT 30,
     include_regex   TEXT NOT NULL DEFAULT '',
     exclude_regex   TEXT NOT NULL DEFAULT '',
+    target_id       INTEGER REFERENCES targets(id) ON DELETE SET NULL,
     target_folder   TEXT NOT NULL DEFAULT '/',
     cookie          TEXT NOT NULL DEFAULT '',
     enabled         INTEGER NOT NULL DEFAULT 1,
@@ -78,6 +88,8 @@ def init_db() -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(feeds)")}
         if "cookie" not in cols:
             conn.execute("ALTER TABLE feeds ADD COLUMN cookie TEXT NOT NULL DEFAULT ''")
+        if "target_id" not in cols:
+            conn.execute("ALTER TABLE feeds ADD COLUMN target_id INTEGER")
 
 
 def now() -> float:
