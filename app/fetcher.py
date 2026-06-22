@@ -48,6 +48,11 @@ def _scraper() -> "cloudscraper.CloudScraper":
 _session = _scraper()
 
 
+def set_proxy(proxy: str) -> None:
+    """Update the shared session's proxy at runtime (from the settings page)."""
+    _session.proxies = {"http": proxy, "https": proxy} if proxy else {}
+
+
 def _respect_rate_limit(host: str) -> None:
     """Block until it's polite to hit `host` again (jitter included)."""
     with _lock:

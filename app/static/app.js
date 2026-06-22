@@ -359,6 +359,64 @@ $('feed-form').addEventListener('submit', async (e) => {
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeTargetModal(); } });
 
+// --------------------------------------------------------------------------- //
+// Navigation / views
+// --------------------------------------------------------------------------- //
+let settingsLoaded = false;
+function switchView(view) {
+  document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === view));
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('hidden', v.id !== 'view-' + view));
+  if (view === 'history') loadItems();
+  if (view === 'settings' && !settingsLoaded) loadSettings();
+}
+$('nav').addEventListener('click', (e) => {
+  const item = e.target.closest('.nav-item'); if (!item) return;
+  switchView(item.dataset.view);
+});
+
+// --------------------------------------------------------------------------- //
+// Settings
+// --------------------------------------------------------------------------- //
+const SET_MAP = {
+  'set-host': 'host_min_interval', 'set-jitter': 'fetch_jitter_seconds',
+  'set-interval': 'default_interval_minutes', 'set-maxitems': 'max_items_per_run',
+  'set-proxy': 'http_proxy', 'set-flaresolverr': 'flaresolverr_url',
+  'set-notify': 'notify_enabled', 'set-onsuccess': 'notify_on_success', 'set-onfailure': 'notify_on_failure',
+  'set-tg-token': 'telegram_bot_token', 'set-tg-chat': 'telegram_chat_id',
+  'set-bark': 'bark_url', 'set-serverchan': 'serverchan_key', 'set-webhook': 'webhook_url',
+};
+async function loadSettings() {
+  const s = await api('/api/settings');
+  for (const [id, key] of Object.entries(SET_MAP)) {
+    const el = $(id); if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!s[key];
+    else el.value = s[key] ?? '';
+  }
+  settingsLoaded = true;
+}
+function collectSettings() {
+  const out = {};
+  for (const [id, key] of Object.entries(SET_MAP)) {
+    const el = $(id); if (!el) continue;
+    out[key] = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? parseInt(el.value, 10) || 0 : el.value.trim());
+  }
+  return out;
+}
+async function saveSettings(btn) {
+  btn.disabled = true;
+  try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(collectSettings()) }); toast('设置已保存'); loadStatus(); }
+  catch (err) { toast('保存失败: ' + err.message); }
+  finally { btn.disabled = false; }
+}
+$('set-save-crawl').addEventListener('click', (e) => saveSettings(e.target));
+$('set-save-notify').addEventListener('click', (e) => saveSettings(e.target));
+$('set-test').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(collectSettings()) }); const r = await api('/api/settings/test-notify', { method: 'POST' }); toast(r.message); }
+  catch (err) { toast('测试失败: ' + err.message); }
+  finally { e.target.disabled = false; }
+});
+
 // initial load + light polling
 (async () => {
   try { TYPES = await api('/api/target-types'); } catch (_) {}
@@ -366,4 +424,4 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMod
   loadStatus(); loadFeeds(); loadItems();
 })();
 setInterval(() => { loadStatus(); loadTargets(); loadFeeds(); }, 30000);
-setInterval(loadItems, 60000);
+setInterval(() => { if (!$('view-history').classList.contains('hidden')) loadItems(); }, 60000);

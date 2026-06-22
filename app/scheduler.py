@@ -11,7 +11,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import crud, onelou, targets as targets_mod
+from . import crud, notify, onelou, targets as targets_mod
 from .config import settings
 from .database import now
 from .fetcher import FetchError, fetch_text
@@ -91,6 +91,10 @@ def process_feed(feed: dict, *, dry_run: bool = False) -> dict:
         status += f", {summary['failed']} failed"
     if not dry_run:
         crud.mark_feed_checked(feed_id, status)
+        try:
+            notify.notify_feed_result(feed["name"], summary)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("notify failed: %s", exc)
     log.info("Feed '%s': %s", feed["name"], summary)
     return summary
 

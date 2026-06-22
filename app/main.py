@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import crud, scheduler, security, targets as targets_mod
+from . import appsettings, crud, notify, scheduler, security, targets as targets_mod
 from .config import settings
 from .database import init_db
 
@@ -30,6 +30,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    appsettings.load()
     crud.seed_default_target()
     scheduler.start()
     log.info("bt2cd2 started. Web user: %s", settings.web_username)
@@ -235,6 +236,27 @@ def test_target(target_id: int, user: str = Depends(require_login)):
     except Exception as exc:  # noqa: BLE001
         ok, msg = False, str(exc)
     return {"ok": ok, "message": msg}
+
+
+# --------------------------------------------------------------------------- #
+# Settings
+# --------------------------------------------------------------------------- #
+@app.get("/api/settings")
+def get_settings(user: str = Depends(require_login)):
+    return appsettings.all_settings()
+
+
+@app.put("/api/settings")
+def put_settings(body: dict, user: str = Depends(require_login)):
+    return appsettings.update(body)
+
+
+@app.post("/api/settings/test-notify")
+def test_notify(user: str = Depends(require_login)):
+    sent = notify.send("bt2cd2 测试通知", "如果你收到这条消息，说明通知配置成功 🎉")
+    if not sent:
+        return {"ok": False, "message": "未启用通知或没有配置任何渠道"}
+    return {"ok": True, "message": "已发送到: " + ", ".join(sent)}
 
 
 # --------------------------------------------------------------------------- #

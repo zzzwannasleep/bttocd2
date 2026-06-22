@@ -7,87 +7,141 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <span class="logo">⬇</span>
-      <div>
-        <div class="brand-name">bt2cd2</div>
-        <div class="brand-tag">BT 资源解析 · 分发</div>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">⬇</span>
+        <div><div class="brand-name">bt2cd2</div><div class="brand-tag">解析 · 分发</div></div>
       </div>
-    </div>
-    <div class="header-right">
-      <span id="target-status" class="badge" title="分发目标">目标: …</span>
-      <button class="ghost" id="logout">退出</button>
-    </div>
-  </header>
+      <nav id="nav">
+        <a class="nav-item active" data-view="sources"><span class="ni">📡</span> 解析源</a>
+        <a class="nav-item" data-view="targets"><span class="ni">🎯</span> 分发目标</a>
+        <a class="nav-item" data-view="history"><span class="ni">📜</span> 分发记录</a>
+        <a class="nav-item" data-view="settings"><span class="ni">⚙️</span> 设置</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="target-status" class="badge" title="分发目标">目标: …</span>
+        <button class="ghost block" id="logout">退出登录</button>
+      </div>
+    </aside>
 
-  <main>
-    <!-- Dashboard -->
-    <section class="cards">
-      <div class="stat"><div class="stat-val" id="s-sources">0</div><div class="stat-label">解析源</div></div>
-      <div class="stat"><div class="stat-val" id="s-targets">0</div><div class="stat-label">分发目标</div></div>
-      <div class="stat"><div class="stat-val ok" id="s-pushed">0</div><div class="stat-label">已分发</div></div>
-      <div class="stat"><div class="stat-val bad" id="s-failed">0</div><div class="stat-label">失败</div></div>
-    </section>
+    <!-- Content -->
+    <main class="content">
+      <section class="cards">
+        <div class="stat"><div class="stat-val" id="s-sources">0</div><div class="stat-label">解析源</div></div>
+        <div class="stat"><div class="stat-val" id="s-targets">0</div><div class="stat-label">分发目标</div></div>
+        <div class="stat"><div class="stat-val ok" id="s-pushed">0</div><div class="stat-label">已分发</div></div>
+        <div class="stat"><div class="stat-val bad" id="s-failed">0</div><div class="stat-label">失败</div></div>
+      </section>
 
-    <!-- Targets -->
-    <section class="card">
-      <div class="row-between">
-        <div><h2>分发目标</h2><div class="muted small">下载器 / 网盘客户端，解析到的资源发往这里</div></div>
-        <button id="new-target">+ 新增目标</button>
+      <!-- Sources view -->
+      <div id="view-sources" class="view">
+        <section class="card">
+          <div class="row-between">
+            <div><h2>解析源</h2><div class="muted small">RSS（dmhy/Nyaa）或 1lou 列表页，定时解析出磁力</div></div>
+            <div class="toolbar">
+              <button class="ghost" id="check-all">检查全部</button>
+              <button id="new-feed">+ 新增源</button>
+            </div>
+          </div>
+          <div id="anti-info" class="muted small"></div>
+          <div class="table-wrap">
+            <table id="feeds-table">
+              <thead><tr><th>源</th><th>地址</th><th>间隔</th><th>分发到</th><th>状态</th><th>启用</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="feeds-empty" class="empty hidden">还没有解析源，点「+ 新增源」添加一个 RSS 或 1lou 列表页。</div>
+        </section>
       </div>
-      <div class="table-wrap">
-        <table id="targets-table">
-          <thead><tr><th>名称</th><th>类型</th><th>地址</th><th>启用</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div id="targets-empty" class="empty hidden">还没有分发目标，先新增一个 CloudDrive2 / qBittorrent / Transmission。</div>
-    </section>
 
-    <!-- Sources -->
-    <section class="card">
-      <div class="row-between">
-        <div><h2>解析源</h2><div class="muted small">RSS（dmhy/Nyaa）或 1lou 列表页，定时解析出磁力</div></div>
-        <div class="toolbar">
-          <button class="ghost" id="check-all">检查全部</button>
-          <button id="new-feed">+ 新增源</button>
-        </div>
+      <!-- Targets view -->
+      <div id="view-targets" class="view hidden">
+        <section class="card">
+          <div class="row-between">
+            <div><h2>分发目标</h2><div class="muted small">下载器 / 网盘客户端，解析到的资源发往这里</div></div>
+            <button id="new-target">+ 新增目标</button>
+          </div>
+          <div class="table-wrap">
+            <table id="targets-table">
+              <thead><tr><th>名称</th><th>类型</th><th>地址</th><th>启用</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="targets-empty" class="empty hidden">还没有分发目标，先新增一个 CloudDrive2 / qBittorrent / Transmission。</div>
+        </section>
       </div>
-      <div id="anti-info" class="muted small"></div>
-      <div class="table-wrap">
-        <table id="feeds-table">
-          <thead>
-            <tr><th>源</th><th>地址</th><th>间隔</th><th>分发到</th><th>状态</th><th>启用</th><th></th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div id="feeds-empty" class="empty hidden">还没有解析源，点「+ 新增源」添加一个 RSS 或 1lou 列表页。</div>
-    </section>
 
-    <!-- History -->
-    <section class="card">
-      <div class="row-between">
-        <h2>分发记录</h2>
-        <div class="toolbar">
-          <select id="hist-filter" class="mini">
-            <option value="">全部状态</option>
-            <option value="ok">成功</option>
-            <option value="failed">失败</option>
-          </select>
-          <button class="ghost" id="refresh-items">刷新</button>
-        </div>
+      <!-- History view -->
+      <div id="view-history" class="view hidden">
+        <section class="card">
+          <div class="row-between">
+            <h2>分发记录</h2>
+            <div class="toolbar">
+              <select id="hist-filter" class="mini">
+                <option value="">全部状态</option>
+                <option value="ok">成功</option>
+                <option value="failed">失败</option>
+              </select>
+              <button class="ghost" id="refresh-items">刷新</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="items-table">
+              <thead><tr><th>时间</th><th>标题</th><th>状态</th><th>信息</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="items-empty" class="empty hidden">暂无记录。</div>
+        </section>
       </div>
-      <div class="table-wrap">
-        <table id="items-table">
-          <thead><tr><th>时间</th><th>标题</th><th>状态</th><th>信息</th></tr></thead>
-          <tbody></tbody>
-        </table>
+
+      <!-- Settings view -->
+      <div id="view-settings" class="view hidden">
+        <section class="card">
+          <h2>抓取 · 防风控</h2>
+          <div class="muted small">控制抓取节奏以规避站点风控。修改后即时生效。</div>
+          <div class="grid2">
+            <label>同站最小间隔（秒）<input id="set-host" type="number" min="1" /></label>
+            <label>随机抖动上限（秒）<input id="set-jitter" type="number" min="0" /></label>
+            <label>新源默认轮询间隔（分钟）<input id="set-interval" type="number" min="5" /></label>
+            <label>单次最多分发条数<input id="set-maxitems" type="number" min="1" /></label>
+            <label>抓取代理（可选）<input id="set-proxy" placeholder="http://127.0.0.1:7890" /></label>
+            <label>FlareSolverr 地址（可选）<input id="set-flaresolverr" placeholder="http://flaresolverr:8191" /></label>
+          </div>
+          <div class="modal-actions"><button id="set-save-crawl">保存抓取设置</button></div>
+        </section>
+
+        <section class="card">
+          <div class="row-between">
+            <h2>通知</h2>
+            <label class="switch-row"><span class="muted small">启用通知</span>
+              <span class="switch"><input id="set-notify" type="checkbox" /><span class="slider"></span></span>
+            </label>
+          </div>
+          <div class="muted small">分发成功/失败时推送。支持 Telegram / Bark / Server酱 / 自定义 Webhook。</div>
+          <div class="grid2">
+            <label class="switch-row"><span>成功时通知</span><span class="switch"><input id="set-onsuccess" type="checkbox" /><span class="slider"></span></span></label>
+            <label class="switch-row"><span>失败时通知</span><span class="switch"><input id="set-onfailure" type="checkbox" /><span class="slider"></span></span></label>
+          </div>
+          <div class="section-label">Telegram</div>
+          <div class="grid2">
+            <label>Bot Token<input id="set-tg-token" placeholder="123456:ABC-..." /></label>
+            <label>Chat ID<input id="set-tg-chat" placeholder="123456789" /></label>
+          </div>
+          <div class="section-label">其他渠道</div>
+          <label>Bark 地址<input id="set-bark" placeholder="https://api.day.app/你的key" /></label>
+          <label>Server酱 SendKey<input id="set-serverchan" placeholder="SCT..." /></label>
+          <label>自定义 Webhook<input id="set-webhook" placeholder="https://your.webhook/endpoint" /></label>
+          <div class="row-between modal-actions">
+            <button class="ghost" id="set-test">发送测试通知</button>
+            <button id="set-save-notify">保存通知设置</button>
+          </div>
+        </section>
       </div>
-      <div id="items-empty" class="empty hidden">暂无记录。</div>
-    </section>
-  </main>
+    </main>
+  </div>
 
   <!-- Source modal -->
   <div id="modal" class="modal hidden">
@@ -96,7 +150,6 @@
         <h2 id="modal-title">新增源</h2>
         <button type="button" class="icon-btn" id="modal-close">✕</button>
       </div>
-
       <div class="section-label">解析</div>
       <input type="hidden" id="feed-id" />
       <label>名称<input id="f-name" required maxlength="120" placeholder="例如 dmhy-动画 / 1lou-最新电影" /></label>
@@ -114,29 +167,23 @@
       </div>
       <label id="url-label">地址<input id="f-url" required placeholder="https://share.dmhy.org/topics/rss/rss.xml" /></label>
       <p id="onelou-hint" class="hint hidden">
-        1lou 没有 RSS：填<strong>列表页地址</strong>（如最新电影 <code>https://www.1lou.me/forum-1.htm</code>，
-        或某个分类/搜索页）。程序自动进帖下载 <code>.torrent</code> 并转成磁力分发。附件无需登录；
-        个别受限板块才需要在下方填 Cookie。
+        1lou 没有 RSS：填<strong>列表页地址</strong>（如最新电影 <code>https://www.1lou.me/forum-1.htm</code>）。
+        程序自动进帖下载 <code>.torrent</code> 并转成磁力分发。附件无需登录；个别受限板块才需在下方填 Cookie。
       </p>
-
       <div class="section-label">过滤（可选）</div>
       <div class="grid2">
         <label>标题包含（正则）<input id="f-include" placeholder="1080p|简体" /></label>
         <label>标题排除（正则）<input id="f-exclude" placeholder="720p|繁體" /></label>
       </div>
-
       <div class="section-label">分发</div>
-      <label>分发到（目标）
-        <select id="f-target"></select>
-      </label>
+      <label>分发到（目标）<select id="f-target"></select></label>
       <label id="loc-label">目标位置<input id="f-folder" placeholder="/115网盘/离线下载" /></label>
       <label id="cookie-label" class="hidden">Cookie（仅受限站点需要）
-        <input id="f-cookie" placeholder="从已登录浏览器的请求头复制完整 Cookie，可留空" />
+        <input id="f-cookie" placeholder="可留空" />
       </label>
       <label class="switch-row"><span>启用该源</span>
         <span class="switch"><input id="f-enabled" type="checkbox" checked /><span class="slider"></span></span>
       </label>
-
       <p id="form-err" class="error"></p>
       <pre id="preview-out" class="preview hidden"></pre>
       <div class="row-between modal-actions">

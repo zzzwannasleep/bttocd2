@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS items (
 
 CREATE INDEX IF NOT EXISTS idx_items_feed ON items(feed_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_items_infohash ON items(infohash);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
 """
 
 
