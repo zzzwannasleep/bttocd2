@@ -77,3 +77,55 @@ class CD2Target(Target):
             return True, "connected"
         except Exception as exc:  # noqa: BLE001
             return False, str(exc)
+
+    # ---- file operations (used by the rename watcher) ---- #
+    def list_files(self, folder: str) -> list[dict]:
+        """List immediate children of a cloud folder via GetSubFiles (streaming)."""
+        client = _build(self.config)
+        getf = getattr(client, "GetSubFiles", None) or getattr(client, "get_sub_files", None)
+        if getf is None:
+            raise TargetError("clouddrive client has no GetSubFiles")
+        try:
+            resp = getf({"path": folder, "forceRefresh": False})
+        except TypeError:
+            from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
+            resp = getf(pb.ListSubFileRequest(path=folder, forceRefresh=False))
+        replies = resp if hasattr(resp, "__iter__") else [resp]
+        out: list[dict] = []
+        for reply in replies:
+            subs = getattr(reply, "subFiles", None) or getattr(reply, "sub_files", None) or []
+            for f in subs:
+                name = getattr(f, "name", "") or ""
+                out.append({
+                    "name": name,
+                    "path": getattr(f, "fullPathName", "") or f"{folder.rstrip('/')}/{name}",
+                    "is_dir": bool(getattr(f, "isDirectory", False)),
+                    "size": int(getattr(f, "size", 0) or 0),
+                })
+        return out
+
+    def rename_path(self, file_path: str, new_name: str) -> None:
+        client = _build(self.config)
+        method = getattr(client, "RenameFile", None)
+        if method is None:
+            raise TargetError("clouddrive client has no RenameFile")
+        try:
+            result = method({"theFilePath": file_path, "newName": new_name})
+        except TypeError:
+            from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
+            result = method(pb.RenameFileRequest(theFilePath=file_path, newName=new_name))
+        if not getattr(result, "success", True):
+            raise TargetError(getattr(result, "errorMessage", "") or "RenameFile failed")
+
+    def move_path(self, file_path: str, dest_folder: str) -> None:
+        client = _build(self.config)
+        method = getattr(client, "MoveFile", None)
+        if method is None:
+            raise TargetError("clouddrive client has no MoveFile")
+        try:
+            result = method({"theFilePaths": [file_path], "destPath": dest_folder})
+        except TypeError:
+            from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
+            result = method(pb.MoveFileRequest(theFilePaths=[file_path], destPath=dest_folder))
+        if not getattr(result, "success", True):
+            raise TargetError(getattr(result, "errorMessage", "") or "MoveFile failed")

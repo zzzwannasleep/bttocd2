@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS rename_jobs (
     infohash    TEXT NOT NULL,
     new_name    TEXT NOT NULL DEFAULT '',
     title       TEXT NOT NULL DEFAULT '',
+    folder      TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'pending',
     attempts    INTEGER NOT NULL DEFAULT 0,
     last_error  TEXT NOT NULL DEFAULT '',
@@ -143,6 +144,9 @@ def init_db() -> None:
         item_cols = {r[1] for r in conn.execute("PRAGMA table_info(items)")}
         if "dest" not in item_cols:
             conn.execute("ALTER TABLE items ADD COLUMN dest TEXT NOT NULL DEFAULT ''")
+        rj_cols = {r[1] for r in conn.execute("PRAGMA table_info(rename_jobs)")}
+        if rj_cols and "folder" not in rj_cols:
+            conn.execute("ALTER TABLE rename_jobs ADD COLUMN folder TEXT NOT NULL DEFAULT ''")
 
 
 def now() -> float:

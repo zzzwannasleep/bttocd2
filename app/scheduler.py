@@ -74,16 +74,22 @@ def _resolve_target(feed: dict) -> dict:
     return target_row
 
 
-def _maybe_enqueue_rename(feed: dict, item: dict, target_row: dict) -> None:
-    """For qBittorrent targets with rename enabled, queue a file-rename keyed by
-    infohash. The watcher renames as soon as qB has the file list (no need to wait
-    for the download to finish — renaming mid-download doesn't affect seeding)."""
-    if target_row["type"] != "qbittorrent" or not item.get("rename_filename"):
+def _maybe_enqueue_rename(feed: dict, item: dict, target_row: dict, location: str) -> None:
+    """Queue a file-rename job (keyed by infohash) for targets that support it.
+
+    qBittorrent: rename the file inside the torrent as soon as metadata is known.
+    CloudDrive2: after the offline download lands in the season folder, rename
+    (and move up) the episode's video file. Both run without waiting for the
+    download to finish.
+    """
+    if target_row["type"] not in ("qbittorrent", "cd2") or not item.get("rename_filename"):
         return
     infohash = item.get("infohash") or _infohash_of(item.get("download", ""))
     if len(infohash) != 40:
-        return  # need a v1 infohash to locate the torrent in qB
-    crud.enqueue_rename(target_row["id"], infohash, item["rename_filename"], item.get("title", ""))
+        return  # need a v1 infohash as the unique job key
+    crud.enqueue_rename(
+        target_row["id"], infohash, item["rename_filename"], item.get("title", ""), folder=location
+    )
 
 
 def _collect_rss(feed: dict, dry_run: bool) -> tuple[list[dict], int]:
@@ -134,7 +140,7 @@ def process_feed(feed: dict, *, dry_run: bool = False) -> dict:
                     item["download"], location
                 )
                 crud.record_item(feed_id, item, "ok")
-                _maybe_enqueue_rename(feed, item, target_row)
+                _maybe_enqueue_rename(feed, item, target_row, location)
                 summary["pushed"] += 1
             except Exception as exc:  # noqa: BLE001
                 crud.record_item(feed_id, item, "failed", str(exc))
@@ -177,36 +183,99 @@ def run_feed_now(feed_id: int, *, dry_run: bool = False) -> dict | None:
     return process_feed(feed, dry_run=dry_run)
 
 
-# qBittorrent rename watcher ------------------------------------------------- #
+# Rename watcher ------------------------------------------------------------- #
 _VIDEO_EXT = {".mkv", ".mp4", ".ts", ".avi", ".flv", ".mov", ".wmv", ".m2ts", ".rmvb", ".webm"}
-RENAME_MAX_ATTEMPTS = 40  # ~ retries until qB fetches metadata, then give up
+RENAME_MAX_ATTEMPTS = 40  # ~ retries until metadata/files appear, then give up
+_TOKEN_RE = re.compile(r"[A-Za-z0-9一-鿿]+")
 
 
-def _process_rename_job(job: dict) -> None:
-    target_row = crud.get_target(job["target_id"], mask=False)
-    if not target_row or target_row["type"] != "qbittorrent":
-        crud.finish_rename_job(job["id"], "skipped", "target missing or not qBittorrent")
-        return
-    target = targets_mod.make_target("qbittorrent", target_row["config"])
+def _is_video(name: str) -> bool:
+    return posixpath.splitext(name or "")[1].lower() in _VIDEO_EXT
+
+
+def _stem(name: str) -> str:
+    return posixpath.splitext(name or "")[0]
+
+
+def _title_score(name: str, title: str) -> int:
+    """How many distinctive tokens the file name shares with the release title."""
+    a = set(_TOKEN_RE.findall((title or "").lower()))
+    b = set(_TOKEN_RE.findall((name or "").lower()))
+    return len(a & b)
+
+
+def _rename_qb(target, job: dict) -> None:
     files = target.files(job["infohash"])
     if not files:
         crud.bump_rename_attempt(job["id"], "metadata not ready yet", RENAME_MAX_ATTEMPTS)
         return
-    videos = [f for f in files if posixpath.splitext(f.get("name", ""))[1].lower() in _VIDEO_EXT]
+    videos = [f for f in files if _is_video(f.get("name", ""))]
     pool = videos or files
     main = max(pool, key=lambda f: f.get("size", 0))
     old = main.get("name", "")
     if not old:
         crud.finish_rename_job(job["id"], "skipped", "no file name from qB")
         return
-    ext = posixpath.splitext(old)[1]
-    new = job["new_name"] + ext  # place at the save-path root with the Emby name
+    new = job["new_name"] + posixpath.splitext(old)[1]
     if new == old:
         crud.finish_rename_job(job["id"], "done", "already named")
         return
     target.rename_file(job["infohash"], old, new)
     crud.finish_rename_job(job["id"], "done")
     log.info("qB renamed [%s] %s -> %s", job["infohash"][:8], old, new)
+
+
+def _rename_cd2(target, job: dict) -> None:
+    folder = job.get("folder") or ""
+    if not folder:
+        crud.finish_rename_job(job["id"], "skipped", "no dest folder recorded")
+        return
+    new_name = job["new_name"]
+    entries = target.list_files(folder)
+    # collect video files at this level and one level down (CD2 may wrap in a folder)
+    videos: list[dict] = []
+    for f in entries:
+        if f["is_dir"]:
+            try:
+                videos += [g for g in target.list_files(f["path"]) if not g["is_dir"] and _is_video(g["name"])]
+            except Exception:  # noqa: BLE001
+                continue
+        elif _is_video(f["name"]):
+            videos.append(f)
+    if not videos:
+        crud.bump_rename_attempt(job["id"], "files not ready yet", RENAME_MAX_ATTEMPTS)
+        return
+    if any(_stem(v["name"]) == new_name for v in videos):
+        crud.finish_rename_job(job["id"], "done", "already named")
+        return
+    # pick the episode's file: best token overlap with the release title, else largest
+    best = max(videos, key=lambda v: (_title_score(v["name"], job.get("title", "")), v["size"]))
+    ext = posixpath.splitext(best["name"])[1]
+    target.rename_path(best["path"], new_name + ext)
+    parent = posixpath.dirname(best["path"]).rstrip("/")
+    if parent and parent != folder.rstrip("/"):
+        try:
+            target.move_path(f"{parent}/{new_name}{ext}", folder)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("CD2 move-up failed (file renamed in place): %s", exc)
+    crud.finish_rename_job(job["id"], "done")
+    log.info("CD2 renamed in %s -> %s%s", folder, new_name, ext)
+
+
+def _process_rename_job(job: dict) -> None:
+    target_row = crud.get_target(job["target_id"], mask=False)
+    if not target_row:
+        crud.finish_rename_job(job["id"], "skipped", "target missing")
+        return
+    ttype = target_row["type"]
+    if ttype not in ("qbittorrent", "cd2"):
+        crud.finish_rename_job(job["id"], "skipped", f"{ttype} has no file rename")
+        return
+    target = targets_mod.make_target(ttype, target_row["config"])
+    if ttype == "qbittorrent":
+        _rename_qb(target, job)
+    else:
+        _rename_cd2(target, job)
 
 
 def _rename_tick() -> None:

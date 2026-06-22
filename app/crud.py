@@ -242,13 +242,13 @@ def list_items(feed_id: int | None = None, limit: int = 200) -> list[dict[str, A
 # --------------------------------------------------------------------------- #
 # Rename jobs (qBittorrent file-rename watcher)
 # --------------------------------------------------------------------------- #
-def enqueue_rename(target_id: int, infohash: str, new_name: str, title: str = "") -> None:
+def enqueue_rename(target_id: int, infohash: str, new_name: str, title: str = "", folder: str = "") -> None:
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO rename_jobs (target_id, infohash, new_name, title, status, created_at)
-               VALUES (?,?,?,?, 'pending', ?)
+            """INSERT INTO rename_jobs (target_id, infohash, new_name, title, folder, status, created_at)
+               VALUES (?,?,?,?,?, 'pending', ?)
                ON CONFLICT(target_id, infohash) DO NOTHING""",
-            (target_id, infohash.lower(), new_name, title[:300], now()),
+            (target_id, infohash.lower(), new_name, title[:300], folder[:500], now()),
         )
 
 

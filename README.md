@@ -132,7 +132,13 @@ dmhy / Nyaa 这类**本身带 magnet 的 RSS** 直接填 RSS 地址即可。
 目录根，命名如 `葬送的芙莉莲 - S01E28.mkv`）。qB 支持下载中改名，**不影响做种**。
 多文件种子只改最大的视频文件；只支持 v1 infohash（40 位）。
 
-> CloudDrive2 / Transmission 仍是**目录级**整理；文件名级回写目前实现于 qBittorrent。
+**CloudDrive2 文件名回写**：离线下载落到 Season 目录后，后台监听器会在该目录里找到本集的
+视频文件，按模板 `RenameFile` 改名；若 CD2 把内容套了一层子目录，会再 `MoveFile` 把文件
+移到 Season 目录根。匹配本集文件用「与发布标题的词重合度 + 体积」择优，已重命名的会跳过。
+
+> Transmission 仍是目录级整理。CD2 文件操作依赖 `clouddrive` 包的
+> `GetSubFiles`/`RenameFile`/`MoveFile`，已做防御性封装（集中在 `targets/cd2.py`），
+> 不同版本若签名有差异只需改这一处。
 
 > **当前实现**：在分发时把下载**落地目录**设为对应的 Emby/Jellyfin 季目录（对
 > CloudDrive2 / qBittorrent / Transmission 都生效，非破坏性）。**文件名级**的
