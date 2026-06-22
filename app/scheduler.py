@@ -8,6 +8,8 @@ which is the best defense against rate-limit bans.
 from __future__ import annotations
 
 import logging
+import posixpath
+import re
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -48,11 +50,19 @@ def _plan_location(feed: dict, item: dict) -> str:
     root = (feed.get("library_path") or s.get("library_root") or "").rstrip("/")
     location = f"{root}/{plan['folder']}" if root else plan["folder"]
     item["dest"] = plan["full"] + ".*"
+    item["rename_filename"] = plan["filename"]  # used by the qB rename watcher
     return location
 
 
-def _dispatch(feed: dict, urls: str, location: str) -> None:
-    """Send resolved URLs to the feed's configured target."""
+_BTIH_RE = re.compile(r"btih:([0-9a-fA-F]{40})", re.I)
+
+
+def _infohash_of(urls: str) -> str:
+    m = _BTIH_RE.search(urls or "")
+    return m.group(1).lower() if m else ""
+
+
+def _resolve_target(feed: dict) -> dict:
     tid = feed.get("target_id")
     if not tid:
         raise targets_mod.TargetError("该源未配置分发目标")
@@ -61,8 +71,19 @@ def _dispatch(feed: dict, urls: str, location: str) -> None:
         raise targets_mod.TargetError("分发目标不存在（已被删除？）")
     if not target_row["enabled"]:
         raise targets_mod.TargetError(f"目标「{target_row['name']}」已停用")
-    target = targets_mod.make_target(target_row["type"], target_row["config"])
-    target.add(urls, location)
+    return target_row
+
+
+def _maybe_enqueue_rename(feed: dict, item: dict, target_row: dict) -> None:
+    """For qBittorrent targets with rename enabled, queue a file-rename keyed by
+    infohash. The watcher renames as soon as qB has the file list (no need to wait
+    for the download to finish — renaming mid-download doesn't affect seeding)."""
+    if target_row["type"] != "qbittorrent" or not item.get("rename_filename"):
+        return
+    infohash = item.get("infohash") or _infohash_of(item.get("download", ""))
+    if len(infohash) != 40:
+        return  # need a v1 infohash to locate the torrent in qB
+    crud.enqueue_rename(target_row["id"], infohash, item["rename_filename"], item.get("title", ""))
 
 
 def _collect_rss(feed: dict, dry_run: bool) -> tuple[list[dict], int]:
@@ -107,9 +128,13 @@ def process_feed(feed: dict, *, dry_run: bool = False) -> dict:
                 summary["failed"] += 1
                 continue
             try:
+                target_row = _resolve_target(feed)
                 location = _plan_location(feed, item)
-                _dispatch(feed, item["download"], location)
+                targets_mod.make_target(target_row["type"], target_row["config"]).add(
+                    item["download"], location
+                )
                 crud.record_item(feed_id, item, "ok")
+                _maybe_enqueue_rename(feed, item, target_row)
                 summary["pushed"] += 1
             except Exception as exc:  # noqa: BLE001
                 crud.record_item(feed_id, item, "failed", str(exc))
@@ -152,6 +177,48 @@ def run_feed_now(feed_id: int, *, dry_run: bool = False) -> dict | None:
     return process_feed(feed, dry_run=dry_run)
 
 
+# qBittorrent rename watcher ------------------------------------------------- #
+_VIDEO_EXT = {".mkv", ".mp4", ".ts", ".avi", ".flv", ".mov", ".wmv", ".m2ts", ".rmvb", ".webm"}
+RENAME_MAX_ATTEMPTS = 40  # ~ retries until qB fetches metadata, then give up
+
+
+def _process_rename_job(job: dict) -> None:
+    target_row = crud.get_target(job["target_id"], mask=False)
+    if not target_row or target_row["type"] != "qbittorrent":
+        crud.finish_rename_job(job["id"], "skipped", "target missing or not qBittorrent")
+        return
+    target = targets_mod.make_target("qbittorrent", target_row["config"])
+    files = target.files(job["infohash"])
+    if not files:
+        crud.bump_rename_attempt(job["id"], "metadata not ready yet", RENAME_MAX_ATTEMPTS)
+        return
+    videos = [f for f in files if posixpath.splitext(f.get("name", ""))[1].lower() in _VIDEO_EXT]
+    pool = videos or files
+    main = max(pool, key=lambda f: f.get("size", 0))
+    old = main.get("name", "")
+    if not old:
+        crud.finish_rename_job(job["id"], "skipped", "no file name from qB")
+        return
+    ext = posixpath.splitext(old)[1]
+    new = job["new_name"] + ext  # place at the save-path root with the Emby name
+    if new == old:
+        crud.finish_rename_job(job["id"], "done", "already named")
+        return
+    target.rename_file(job["infohash"], old, new)
+    crud.finish_rename_job(job["id"], "done")
+    log.info("qB renamed [%s] %s -> %s", job["infohash"][:8], old, new)
+
+
+def _rename_tick() -> None:
+    jobs = crud.pending_rename_jobs()
+    for job in jobs:
+        try:
+            _process_rename_job(job)
+        except Exception as exc:  # noqa: BLE001
+            crud.bump_rename_attempt(job["id"], str(exc), RENAME_MAX_ATTEMPTS)
+            log.warning("rename job %s failed: %s", job["id"], exc)
+
+
 def start() -> None:
     global _scheduler
     if _scheduler is not None:
@@ -162,8 +229,12 @@ def start() -> None:
         _tick, "interval", seconds=60, id="tick",
         coalesce=True, max_instances=1, misfire_grace_time=300,
     )
+    _scheduler.add_job(
+        _rename_tick, "interval", seconds=20, id="rename",
+        coalesce=True, max_instances=1, misfire_grace_time=60,
+    )
     _scheduler.start()
-    log.info("Scheduler started (tick every 60s)")
+    log.info("Scheduler started (feed tick 60s, rename watcher 20s)")
 
 
 def shutdown() -> None:

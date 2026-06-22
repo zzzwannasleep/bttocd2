@@ -239,6 +239,47 @@ def list_items(feed_id: int | None = None, limit: int = 200) -> list[dict[str, A
     return [dict(r) for r in rows]
 
 
+# --------------------------------------------------------------------------- #
+# Rename jobs (qBittorrent file-rename watcher)
+# --------------------------------------------------------------------------- #
+def enqueue_rename(target_id: int, infohash: str, new_name: str, title: str = "") -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO rename_jobs (target_id, infohash, new_name, title, status, created_at)
+               VALUES (?,?,?,?, 'pending', ?)
+               ON CONFLICT(target_id, infohash) DO NOTHING""",
+            (target_id, infohash.lower(), new_name, title[:300], now()),
+        )
+
+
+def pending_rename_jobs(limit: int = 100) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM rename_jobs WHERE status='pending' ORDER BY id LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def finish_rename_job(job_id: int, status: str, error: str = "") -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE rename_jobs SET status=?, last_error=?, attempts=attempts+1 WHERE id=?",
+            (status, error[:300], job_id),
+        )
+
+
+def bump_rename_attempt(job_id: int, error: str, max_attempts: int) -> None:
+    """Increment attempts; mark failed once the cap is reached."""
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE rename_jobs
+               SET attempts=attempts+1, last_error=?,
+                   status=CASE WHEN attempts+1 >= ? THEN 'failed' ELSE 'pending' END
+               WHERE id=?""",
+            (error[:300], max_attempts, job_id),
+        )
+
+
 def counts() -> dict[str, int]:
     with get_conn() as conn:
         feeds = conn.execute("SELECT COUNT(*) FROM feeds").fetchone()[0]

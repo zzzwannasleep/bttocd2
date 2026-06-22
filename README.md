@@ -118,10 +118,21 @@ dmhy / Nyaa 这类**本身带 magnet 的 RSS** 直接填 RSS 地址即可。
 模板里写 `${lang}`，标题含 `CHS` 时自动变成「简体中文」（同一变量多条规则按顺序优先匹配）。
 
 **模板预设**：可保存多套命名模板，新增源时在「套用模板」下拉里一键选用，再按需微调。
+勾选「首选」的模板会作为全局默认并在新增源时预选。支持**导入/导出** JSON，方便整套
+模板+关键词在用户间分享。
 
 示例模板
 `[${subgroup}] ${title} - S${seasonFormat}E${episodeFormat} ${resolution} ${lang}`
 → `[ANi] 葬送的芙莉莲 - S01E28 1080p 简体中文.mkv`
+
+### qBittorrent 文件名回写（下载中即重命名）
+
+当订阅的目标是 **qBittorrent** 且开启了自动重命名：分发后台会按 infohash 跟踪该种子，
+**一旦 qB 取到文件列表（不必等下载完成）就把主视频文件按模板改名**（落到已设好的 Season
+目录根，命名如 `葬送的芙莉莲 - S01E28.mkv`）。qB 支持下载中改名，**不影响做种**。
+多文件种子只改最大的视频文件；只支持 v1 infohash（40 位）。
+
+> CloudDrive2 / Transmission 仍是**目录级**整理；文件名级回写目前实现于 qBittorrent。
 
 > **当前实现**：在分发时把下载**落地目录**设为对应的 Emby/Jellyfin 季目录（对
 > CloudDrive2 / qBittorrent / Transmission 都生效，非破坏性）。**文件名级**的

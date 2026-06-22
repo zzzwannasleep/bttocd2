@@ -54,3 +54,29 @@ class QbTarget(Target):
                 client.close()
         except Exception as exc:  # noqa: BLE001
             return False, str(exc)
+
+    # ---- file operations (used by the rename watcher) ---- #
+    def files(self, infohash: str) -> list[dict]:
+        """Return qB's file list for a torrent (empty until metadata is fetched)."""
+        client = self._client()
+        try:
+            r = client.get("/api/v2/torrents/files", params={"hash": infohash.lower()})
+            if r.status_code != 200:
+                return []
+            try:
+                return r.json()
+            except Exception:  # noqa: BLE001
+                return []
+        finally:
+            client.close()
+
+    def rename_file(self, infohash: str, old_path: str, new_path: str) -> None:
+        """Rename a file inside a torrent. Safe to call while downloading."""
+        client = self._client()
+        try:
+            r = client.post("/api/v2/torrents/renameFile",
+                            data={"hash": infohash.lower(), "oldPath": old_path, "newPath": new_path})
+            if r.status_code not in (200, 409):
+                raise TargetError(f"qBittorrent renameFile failed (HTTP {r.status_code})")
+        finally:
+            client.close()

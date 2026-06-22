@@ -41,8 +41,9 @@ META_KEYS = {
 }
 RENAME_KEYS = {
     "default_rename_template": str,
-    "rename_templates": list,  # [{name, template}]  reusable presets
-    "rename_tags": list,       # [{var, label, patterns:[...]}]  custom keyword rules
+    "preferred_template": str,  # name of the preset used as default / preselected
+    "rename_templates": list,   # [{name, template}]  reusable presets
+    "rename_tags": list,        # [{var, label, patterns:[...]}]  custom keyword rules
 }
 ALL_KEYS = {**CRAWL_KEYS, **NOTIFY_KEYS, **META_KEYS, **RENAME_KEYS}
 
@@ -69,6 +70,7 @@ def _defaults() -> dict:
         "tmdb_api_key": "",
         "library_root": "",
         "default_rename_template": naming.DEFAULT_TEMPLATE,
+        "preferred_template": "默认",
         "rename_templates": [
             {"name": "默认", "template": naming.DEFAULT_TEMPLATE},
             {"name": "带字幕语言", "template":
@@ -138,6 +140,13 @@ def update(new: dict) -> dict:
     merged["host_min_interval"] = max(1, merged["host_min_interval"])
     merged["default_interval_minutes"] = max(5, merged["default_interval_minutes"])
     merged["max_items_per_run"] = max(1, merged["max_items_per_run"])
+    # Keep the effective default template in sync with the preferred preset.
+    pref = merged.get("preferred_template")
+    if pref:
+        match = next((t for t in merged.get("rename_templates", [])
+                      if t.get("name") == pref and t.get("template")), None)
+        if match:
+            merged["default_rename_template"] = match["template"]
     with get_conn() as conn:
         for key in ALL_KEYS:
             conn.execute(

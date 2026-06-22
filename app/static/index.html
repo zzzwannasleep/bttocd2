@@ -125,8 +125,16 @@
         </section>
 
         <section class="card">
-          <h2>重命名模板 · 关键词</h2>
+          <div class="row-between">
+            <h2>重命名模板 · 关键词</h2>
+            <div class="toolbar">
+              <button type="button" class="ghost" id="rename-export">导出</button>
+              <button type="button" class="ghost" id="rename-import">导入</button>
+              <input type="file" id="rename-file" accept="application/json,.json" class="hidden" />
+            </div>
+          </div>
           <div class="muted small">
+            选中「首选」的模板会作为默认、并在新增源时预选。导入/导出方便分享整套模板与关键词。<br>
             内置变量：<code>${title}</code> <code>${year}</code> <code>${season}</code>
             <code>${seasonFormat}</code> <code>${episode}</code> <code>${episodeFormat}</code>
             <code>${subgroup}</code> <code>${resolution}</code> <code>${source}</code>，

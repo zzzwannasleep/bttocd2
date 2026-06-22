@@ -152,7 +152,8 @@ label { display: block; margin: 11px 0; color: var(--muted); font-size: 13px; }
 
 /* Settings row-list editors (templates / keyword rules) */
 .row-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
-.tmpl-row { display: grid; grid-template-columns: 150px 1fr 32px; gap: 8px; align-items: center; }
+.tmpl-row { display: grid; grid-template-columns: 44px 150px 1fr 32px; gap: 8px; align-items: center; }
+.tmpl-row .pref-wrap { display: grid; place-items: center; }
 .tag-row { display: grid; grid-template-columns: 110px 130px 1fr 32px; gap: 8px; align-items: center; }
 .tag-head { margin-bottom: -2px; }
 .row-list input { margin-top: 0; }

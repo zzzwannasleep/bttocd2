@@ -97,6 +97,20 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS rename_jobs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    target_id   INTEGER NOT NULL,
+    infohash    TEXT NOT NULL,
+    new_name    TEXT NOT NULL DEFAULT '',
+    title       TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'pending',
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    last_error  TEXT NOT NULL DEFAULT '',
+    created_at  REAL NOT NULL,
+    UNIQUE(target_id, infohash)
+);
+CREATE INDEX IF NOT EXISTS idx_rename_status ON rename_jobs(status);
 """
 
 

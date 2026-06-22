@@ -271,7 +271,11 @@ function fillTemplatePresets() {
   const sel = $('f-tmpl-preset');
   const list = SETTINGS.rename_templates || [];
   sel.innerHTML = '<option value="">— 选择预设套用 —</option>' +
-    list.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+    list.map((t, i) => `<option value="${i}">${esc(t.name)}${t.name === SETTINGS.preferred_template ? ' ★首选' : ''}</option>`).join('');
+}
+function preferredTemplate() {
+  const list = SETTINGS.rename_templates || [];
+  return list.find((t) => t.name === SETTINGS.preferred_template) || list[0] || null;
 }
 
 let _previewTimer = null;
@@ -321,7 +325,8 @@ function openModal(feed) {
   $('f-offset').value = feed ? (feed.episode_offset ?? 0) : 0;
   $('f-library').value = feed ? (feed.library_path || '') : '';
   $('f-rename').checked = feed ? !!feed.rename_enabled : false;
-  $('f-template').value = feed ? (feed.rename_template || '') : '';
+  const pref = preferredTemplate();
+  $('f-template').value = feed ? (feed.rename_template || '') : (pref ? pref.template : '');
   $('f-poster').value = feed ? (feed.poster || '') : '';
   $('f-metasource').value = feed ? (feed.meta_source || '') : '';
   $('f-metaid').value = feed ? (feed.meta_id || '') : '';
@@ -521,7 +526,7 @@ async function loadSettings() {
     if (el.type === 'checkbox') el.checked = !!s[key];
     else el.value = s[key] ?? '';
   }
-  renderTmplRows(s.rename_templates || []);
+  renderTmplRows(s.rename_templates || [], s.preferred_template);
   renderTagRows(s.rename_tags || []);
   settingsLoaded = true;
 }
@@ -543,20 +548,35 @@ async function saveSettings(btn, extra = {}) {
 }
 
 // ---- template-preset rows ----
-function tmplRow(t = { name: '', template: '' }) {
+function tmplRow(t = { name: '', template: '' }, preferred = false) {
   const div = document.createElement('div');
   div.className = 'tmpl-row';
-  div.innerHTML = `<input class="t-name" placeholder="模板名" value="${esc(t.name)}">
+  div.innerHTML = `<span class="pref-wrap" title="设为首选"><input type="radio" name="preftmpl" ${preferred ? 'checked' : ''}></span>
+    <input class="t-name" placeholder="模板名" value="${esc(t.name)}">
     <input class="t-tmpl" placeholder="\${title} (\${year})/Season \${seasonFormat}/..." value="${esc(t.template)}">
     <button type="button" class="row-del">✕</button>`;
   div.querySelector('.row-del').addEventListener('click', () => div.remove());
   return div;
 }
-function renderTmplRows(list) { const box = $('tmpl-list'); box.innerHTML = ''; list.forEach((t) => box.appendChild(tmplRow(t))); }
+function renderTmplRows(list, preferred) {
+  const box = $('tmpl-list'); box.innerHTML = '';
+  list.forEach((t) => box.appendChild(tmplRow(t, t.name === preferred)));
+  // ensure at least one radio is selected
+  if (!box.querySelector('input[name="preftmpl"]:checked')) {
+    const first = box.querySelector('input[name="preftmpl"]'); if (first) first.checked = true;
+  }
+}
 function collectTmpls() {
   return [...$('tmpl-list').querySelectorAll('.tmpl-row')].map((r) => ({
     name: r.querySelector('.t-name').value.trim(), template: r.querySelector('.t-tmpl').value.trim(),
   })).filter((t) => t.name && t.template);
+}
+function collectPreferred() {
+  const rows = [...$('tmpl-list').querySelectorAll('.tmpl-row')];
+  for (const r of rows) {
+    if (r.querySelector('input[name="preftmpl"]').checked) return r.querySelector('.t-name').value.trim();
+  }
+  return '';
 }
 // ---- keyword-rule rows ----
 function tagRow(t = { var: '', label: '', patterns: [] }) {
@@ -584,7 +604,38 @@ $('set-save-crawl').addEventListener('click', (e) => saveSettings(e.target));
 $('set-save-notify').addEventListener('click', (e) => saveSettings(e.target));
 $('set-save-meta').addEventListener('click', (e) => saveSettings(e.target));
 $('set-save-rename').addEventListener('click', (e) =>
-  saveSettings(e.target, { rename_templates: collectTmpls(), rename_tags: collectTags() }));
+  saveSettings(e.target, {
+    rename_templates: collectTmpls(), rename_tags: collectTags(),
+    preferred_template: collectPreferred(),
+  }));
+
+// ---- import / export (share template sets) ----
+$('rename-export').addEventListener('click', () => {
+  const data = {
+    default_rename_template: $('set-deftmpl').value.trim(),
+    preferred_template: collectPreferred(),
+    rename_templates: collectTmpls(),
+    rename_tags: collectTags(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bt2cd2-rename-templates.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('已导出，可分享该 JSON');
+});
+$('rename-import').addEventListener('click', () => $('rename-file').click());
+$('rename-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (Array.isArray(data.rename_templates)) renderTmplRows(data.rename_templates, data.preferred_template);
+    if (Array.isArray(data.rename_tags)) renderTagRows(data.rename_tags);
+    if (data.default_rename_template) $('set-deftmpl').value = data.default_rename_template;
+    toast('已导入，点「保存重命名设置」生效');
+  } catch (err) { toast('导入失败：JSON 格式错误'); }
+  finally { e.target.value = ''; }
+});
 $('set-test').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(collectSettings()) }); const r = await api('/api/settings/test-notify', { method: 'POST' }); toast(r.message); }
