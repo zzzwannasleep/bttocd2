@@ -4,6 +4,8 @@ feedparser==6.0.11
 cloudscraper==1.2.71
 APScheduler==3.11.0
 itsdangerous==2.2.0
-clouddrive>=0.0.13
 PyYAML==6.0.2
 httpx==0.28.1
+# CloudDrive2 gRPC — talk to it directly via vendored stubs (app/cd2proto)
+grpcio>=1.66,<2
+protobuf>=6.33.5,<7

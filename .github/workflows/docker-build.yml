@@ -18,6 +18,9 @@ jobs:
     env:
       # Optional Docker Hub mirror. Leave the repo secrets unset to skip it.
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      # Don't upload the GitHub "build record" artifact (the .dockerbuild file).
+      DOCKER_BUILD_RECORD_UPLOAD: false
+      DOCKER_BUILD_SUMMARY: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4

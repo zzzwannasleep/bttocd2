@@ -1,131 +1,126 @@
-"""CloudDrive2 offline-download target (gRPC AddOfflineFiles)."""
+"""CloudDrive2 target — talks to CD2's gRPC API directly via vendored stubs.
+
+We dropped the third-party `clouddrive` PyPI package (removed from PyPI) and
+generate our own client from the official clouddrive.proto (see app/cd2proto).
+
+Auth: GetToken(userName,password) -> JWT, attached as `authorization: Bearer …`
+metadata on every call; refreshed once on UNAUTHENTICATED.
+"""
 from __future__ import annotations
 
 import logging
 import threading
+from urllib.parse import urlparse
 
+import grpc
+
+from ..cd2proto import clouddrive_pb2 as pb
+from ..cd2proto import clouddrive_pb2_grpc as pbg
 from .base import Target, TargetError, as_urls
 
 log = logging.getLogger(__name__)
 
-# Cache CloudDriveClient instances by connection so we don't re-login every push.
-_clients: dict[tuple, object] = {}
+_sessions: dict[tuple, "_Session"] = {}
 _lock = threading.Lock()
 
 
-def _key(config: dict) -> tuple:
-    return (config.get("url", ""), config.get("username", ""))
+def _host_port(url: str) -> str:
+    u = urlparse(url if "://" in url else "http://" + url)
+    return f"{u.hostname or '127.0.0.1'}:{u.port or 19798}"
 
 
-def _build(config: dict, *, force: bool = False):
+class _Session:
+    def __init__(self, url: str, user: str, pwd: str):
+        self.target = _host_port(url)
+        self.user, self.pwd = user, pwd
+        self.channel = grpc.insecure_channel(self.target)
+        self.stub = pbg.CloudDriveFileSrvStub(self.channel)
+        self.token: str | None = None
+
+    def _login(self) -> None:
+        res = self.stub.GetToken(pb.GetTokenRequest(userName=self.user, password=self.pwd), timeout=30)
+        if not res.success:
+            raise TargetError(res.errorMessage or "GetToken failed (check CD2 account)")
+        self.token = res.token
+
+    def _metadata(self):
+        if not self.token:
+            self._login()
+        return (("authorization", f"Bearer {self.token}"),)
+
+    def call(self, method: str, request, *, stream: bool = False, timeout: int = 60):
+        fn = getattr(self.stub, method)
+        for attempt in range(2):
+            try:
+                if stream:
+                    return list(fn(request, metadata=self._metadata(), timeout=timeout))
+                return fn(request, metadata=self._metadata(), timeout=timeout)
+            except grpc.RpcError as exc:
+                if exc.code() == grpc.StatusCode.UNAUTHENTICATED and attempt == 0:
+                    self.token = None  # refresh and retry once
+                    continue
+                raise TargetError(f"CD2 {method} failed: {exc.code().name} {exc.details()}") from exc
+
+
+def _get_session(config: dict, *, force: bool = False) -> _Session:
     url = config.get("url", "")
     user = config.get("username", "")
     pwd = config.get("password", "")
     if not (url and user and pwd):
         raise TargetError("CD2 target needs url + username + password")
-    key = _key(config)
+    key = (_host_port(url), user)
     with _lock:
-        client = _clients.get(key)
-        if client is None or force:
-            try:
-                from clouddrive import CloudDriveClient
-            except ImportError as exc:  # pragma: no cover
-                raise TargetError("`clouddrive` package not installed") from exc
-            log.info("Connecting to CloudDrive2 at %s", url)
-            client = _clients[key] = CloudDriveClient(url, user, pwd)
-        return client
-
-
-def _call_add(client, urls: str, to_folder: str):
-    payload = {"urls": urls, "toFolder": to_folder, "checkFolderAfterSecs": 0}
-    method = getattr(client, "AddOfflineFiles", None)
-    if method is None:
-        raise TargetError("clouddrive client has no AddOfflineFiles")
-    try:
-        return method(payload)
-    except TypeError:
-        from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
-
-        return method(pb.AddOfflineFileRequest(urls=urls, toFolder=to_folder, checkFolderAfterSecs=0))
+        sess = _sessions.get(key)
+        if sess is None or force:
+            log.info("Connecting to CloudDrive2 at %s", key[0])
+            sess = _sessions[key] = _Session(url, user, pwd)
+        return sess
 
 
 class CD2Target(Target):
+    def _session(self, force: bool = False) -> _Session:
+        return _get_session(self.config, force=force)
+
     def add(self, urls, location: str = "") -> None:
         joined = "\n".join(as_urls(urls))
         if not joined:
             raise TargetError("no URLs to add")
         folder = location or self.config.get("folder") or "/"
-        last: Exception | None = None
-        for attempt in range(2):  # retry once with a fresh client (token expiry)
-            try:
-                client = _build(self.config, force=(attempt == 1))
-                result = _call_add(client, joined, folder)
-                if not getattr(result, "success", True):
-                    msg = getattr(result, "errorMessage", "") or getattr(result, "error_message", "")
-                    raise TargetError(f"CD2 rejected task: {msg}")
-                return
-            except TargetError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                last = exc
-                log.warning("CD2 add attempt %d failed: %s", attempt + 1, exc)
-        raise TargetError(f"AddOfflineFiles failed: {last}")
+        req = pb.AddOfflineFileRequest(urls=joined, toFolder=folder, checkFolderAfterSecs=0)
+        res = self._session().call("AddOfflineFiles", req)
+        if not getattr(res, "success", True):
+            raise TargetError(f"CD2 rejected task: {getattr(res, 'errorMessage', '')}")
 
     def check(self) -> tuple[bool, str]:
         try:
-            _build(self.config, force=True)
+            self._session(force=True)._login()
             return True, "connected"
         except Exception as exc:  # noqa: BLE001
             return False, str(exc)
 
     # ---- file operations (used by the rename watcher) ---- #
     def list_files(self, folder: str) -> list[dict]:
-        """List immediate children of a cloud folder via GetSubFiles (streaming)."""
-        client = _build(self.config)
-        getf = getattr(client, "GetSubFiles", None) or getattr(client, "get_sub_files", None)
-        if getf is None:
-            raise TargetError("clouddrive client has no GetSubFiles")
-        try:
-            resp = getf({"path": folder, "forceRefresh": False})
-        except TypeError:
-            from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
-            resp = getf(pb.ListSubFileRequest(path=folder, forceRefresh=False))
-        replies = resp if hasattr(resp, "__iter__") else [resp]
+        req = pb.ListSubFileRequest(path=folder, forceRefresh=False)
+        replies = self._session().call("GetSubFiles", req, stream=True)
         out: list[dict] = []
         for reply in replies:
-            subs = getattr(reply, "subFiles", None) or getattr(reply, "sub_files", None) or []
-            for f in subs:
-                name = getattr(f, "name", "") or ""
+            for f in reply.subFiles:
                 out.append({
-                    "name": name,
-                    "path": getattr(f, "fullPathName", "") or f"{folder.rstrip('/')}/{name}",
-                    "is_dir": bool(getattr(f, "isDirectory", False)),
-                    "size": int(getattr(f, "size", 0) or 0),
+                    "name": f.name,
+                    "path": f.fullPathName or f"{folder.rstrip('/')}/{f.name}",
+                    "is_dir": bool(f.isDirectory),
+                    "size": int(f.size or 0),
                 })
         return out
 
     def rename_path(self, file_path: str, new_name: str) -> None:
-        client = _build(self.config)
-        method = getattr(client, "RenameFile", None)
-        if method is None:
-            raise TargetError("clouddrive client has no RenameFile")
-        try:
-            result = method({"theFilePath": file_path, "newName": new_name})
-        except TypeError:
-            from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
-            result = method(pb.RenameFileRequest(theFilePath=file_path, newName=new_name))
-        if not getattr(result, "success", True):
-            raise TargetError(getattr(result, "errorMessage", "") or "RenameFile failed")
+        req = pb.RenameFileRequest(theFilePath=file_path, newName=new_name)
+        res = self._session().call("RenameFile", req)
+        if not getattr(res, "success", True):
+            raise TargetError(getattr(res, "errorMessage", "") or "RenameFile failed")
 
     def move_path(self, file_path: str, dest_folder: str) -> None:
-        client = _build(self.config)
-        method = getattr(client, "MoveFile", None)
-        if method is None:
-            raise TargetError("clouddrive client has no MoveFile")
-        try:
-            result = method({"theFilePaths": [file_path], "destPath": dest_folder})
-        except TypeError:
-            from clouddrive.proto import CloudDrive_pb2 as pb  # type: ignore
-            result = method(pb.MoveFileRequest(theFilePaths=[file_path], destPath=dest_folder))
-        if not getattr(result, "success", True):
-            raise TargetError(getattr(result, "errorMessage", "") or "MoveFile failed")
+        req = pb.MoveFileRequest(theFilePaths=[file_path], destPath=dest_folder)
+        res = self._session().call("MoveFile", req)
+        if not getattr(res, "success", True):
+            raise TargetError(getattr(res, "errorMessage", "") or "MoveFile failed")
