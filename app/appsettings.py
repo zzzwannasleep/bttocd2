@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
-from . import fetcher
+from . import fetcher, naming
 from .config import settings
 from .database import get_conn
 
@@ -39,7 +39,12 @@ META_KEYS = {
     "tmdb_api_key": str,
     "library_root": str,      # default Emby/Jellyfin library root
 }
-ALL_KEYS = {**CRAWL_KEYS, **NOTIFY_KEYS, **META_KEYS}
+RENAME_KEYS = {
+    "default_rename_template": str,
+    "rename_templates": list,  # [{name, template}]  reusable presets
+    "rename_tags": list,       # [{var, label, patterns:[...]}]  custom keyword rules
+}
+ALL_KEYS = {**CRAWL_KEYS, **NOTIFY_KEYS, **META_KEYS, **RENAME_KEYS}
 
 STATE: dict = {}
 
@@ -63,6 +68,21 @@ def _defaults() -> dict:
         "meta_source": "bangumi",
         "tmdb_api_key": "",
         "library_root": "",
+        "default_rename_template": naming.DEFAULT_TEMPLATE,
+        "rename_templates": [
+            {"name": "默认", "template": naming.DEFAULT_TEMPLATE},
+            {"name": "带字幕语言", "template":
+                "${title} (${year})/Season ${seasonFormat}/"
+                "${title} - S${seasonFormat}E${episodeFormat} ${lang}"},
+            {"name": "带字幕组+清晰度", "template":
+                "${title} (${year})/Season ${seasonFormat}/"
+                "[${subgroup}] ${title} - S${seasonFormat}E${episodeFormat} ${resolution} ${lang}"},
+        ],
+        "rename_tags": [
+            {"var": "lang", "label": "简体中文", "patterns": ["CHS", "GB", "简体", "简中", "SC"]},
+            {"var": "lang", "label": "繁体中文", "patterns": ["CHT", "BIG5", "繁體", "繁中", "TC"]},
+            {"var": "lang", "label": "简日双语", "patterns": ["简日", "CHS_JP", "GB_JP"]},
+        ],
     }
 
 
@@ -75,6 +95,8 @@ def _coerce(key: str, value):
             return max(0, int(value))
         except (TypeError, ValueError):
             return 0
+    if typ is list:
+        return value if isinstance(value, list) else []
     return str(value or "")
 
 

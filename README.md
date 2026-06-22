@@ -96,9 +96,32 @@ dmhy / Nyaa 这类**本身带 magnet 的 RSS** 直接填 RSS 地址即可。
 - **季 / 集偏移**：`Season` 决定落到哪个季目录；`集数偏移`用于分割放送或跨季编号
   （如 RSS 里是 28 集、实际是第 2 季第 16 集，就填 `-12`）。
 - **自动重命名整理**：打开开关后，每个剧集按解析到的集号落到
-  `媒体库/标题 (年份)/Season NN/` 目录（命名模板可自定义，默认
-  `{title} ({year})/Season {season:02d}/{title} - S{season:02d}E{episode:02d}`）。
-  弹窗里有实时命名预览。媒体库根目录在「设置」里设全局默认，单个订阅可覆盖。
+  `媒体库/标题 (年份)/Season NN/...` 目录，弹窗里有**实时命名预览**。
+  媒体库根目录在「设置」里设全局默认，单个订阅可覆盖。
+
+### 命名模板（`${var}` 变量 + 自定义关键词 + 预设）
+
+模板用 `${var}` 占位符（参考 ani-rss）。内置变量：
+
+`${title}` `${year}` `${season}` `${seasonFormat}`(补零) `${episode}`
+`${episodeFormat}`(补零) `${subgroup}`(字幕组) `${resolution}`(1080p…)
+`${source}`(WEB-DL/BluRay…) `${itemTitle}` `${tmdbid}` `${bgmId}`
+
+**自定义关键词**（设置 → 重命名）：定义「变量名 / 输出文本 / 关键词」规则，
+程序匹配发布标题后把变量替换成你的文案。例如：
+
+| 变量名 | 输出文本 | 关键词 |
+|--------|----------|--------|
+| `lang` | 简体中文 | `CHS,简体,GB,SC` |
+| `lang` | 繁体中文 | `CHT,BIG5,繁體` |
+
+模板里写 `${lang}`，标题含 `CHS` 时自动变成「简体中文」（同一变量多条规则按顺序优先匹配）。
+
+**模板预设**：可保存多套命名模板，新增源时在「套用模板」下拉里一键选用，再按需微调。
+
+示例模板
+`[${subgroup}] ${title} - S${seasonFormat}E${episodeFormat} ${resolution} ${lang}`
+→ `[ANi] 葬送的芙莉莲 - S01E28 1080p 简体中文.mkv`
 
 > **当前实现**：在分发时把下载**落地目录**设为对应的 Emby/Jellyfin 季目录（对
 > CloudDrive2 / qBittorrent / Transmission 都生效，非破坏性）。**文件名级**的

@@ -267,16 +267,39 @@ function renderMetaPicked() {
   $('meta-info').innerHTML = `来源 ${esc(src || '-')}${total ? ' · 共 ' + total + ' 话' : ''}`;
 }
 
+function fillTemplatePresets() {
+  const sel = $('f-tmpl-preset');
+  const list = SETTINGS.rename_templates || [];
+  sel.innerHTML = '<option value="">— 选择预设套用 —</option>' +
+    list.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+}
+
+let _previewTimer = null;
 function updateNamePreview() {
+  clearTimeout(_previewTimer);
+  _previewTimer = setTimeout(doNamePreview, 250);
+}
+async function doNamePreview() {
   const el = $('name-preview');
   if (!$('f-rename').checked) { el.classList.add('hidden'); return; }
-  const title = ($('f-title').value || $('f-name').value || 'Title').replace(/[\\/:*?"<>|]/g, '');
-  const year = $('f-year').value.trim();
-  const s = String(parseInt($('f-season').value, 10) || 1).padStart(2, '0');
-  const root = ($('f-library').value || '<媒体库根>').replace(/\/$/, '');
-  const yp = year ? ` (${year})` : '';
   el.classList.remove('hidden');
-  el.innerHTML = `示例：<code>${esc(root)}/${esc(title)}${esc(yp)}/Season ${s}/${esc(title)} - S${s}E01.mkv</code>`;
+  const body = {
+    template: $('f-template').value.trim(),
+    item_title: $('f-sample').value.trim(),
+    title: $('f-name').value.trim(),
+    title_cn: $('f-title').value.trim(),
+    year: $('f-year').value.trim(),
+    season: parseInt($('f-season').value, 10) || 1,
+    episode_offset: parseInt($('f-offset').value, 10) || 0,
+    meta_source: $('f-metasource').value,
+    meta_id: $('f-metaid').value,
+    sample_episode: 1,
+  };
+  try {
+    const r = await api('/api/name-preview', { method: 'POST', body: JSON.stringify(body) });
+    const root = ($('f-library').value || SETTINGS.library_root || '<媒体库根>').replace(/\/$/, '');
+    el.innerHTML = `预览：<code>${esc(root)}/${esc(r.full)}</code>`;
+  } catch (err) { el.innerHTML = '<span class="error">预览失败: ' + esc(err.message) + '</span>'; }
 }
 
 function openModal(feed) {
@@ -304,8 +327,10 @@ function openModal(feed) {
   $('f-metaid').value = feed ? (feed.meta_id || '') : '';
   $('f-total').value = feed ? (feed.total_episodes || '') : '';
   $('f-scrape-kw').value = feed ? (feed.title_cn || feed.name || '') : '';
+  $('f-sample').value = '';
   $('scrape-results').innerHTML = '';
   renderMetaPicked();
+  fillTemplatePresets();
   fillTargetSelect(feed ? feed.target_id : (TARGETS[0] && TARGETS[0].id));
   $('form-err').textContent = '';
   $('preview-out').classList.add('hidden');
@@ -370,9 +395,14 @@ $('f-scrape-btn').addEventListener('click', async () => {
     }
   } catch (err) { box.innerHTML = '<span class="error">' + esc(err.message) + '</span>'; }
 });
-['f-rename', 'f-title', 'f-year', 'f-season', 'f-library'].forEach((id) =>
+['f-title', 'f-year', 'f-season', 'f-offset', 'f-library', 'f-template', 'f-sample'].forEach((id) =>
   $(id).addEventListener('input', updateNamePreview));
 $('f-rename').addEventListener('change', updateNamePreview);
+$('f-tmpl-preset').addEventListener('change', (e) => {
+  const list = SETTINGS.rename_templates || [];
+  const t = list[parseInt(e.target.value, 10)];
+  if (t) { $('f-template').value = t.template; if (!$('f-rename').checked) $('f-rename').checked = true; updateNamePreview(); }
+});
 
 // --------------------------------------------------------------------------- //
 $('new-feed').addEventListener('click', () => openModal(null));
@@ -479,14 +509,20 @@ const SET_MAP = {
   'set-tg-token': 'telegram_bot_token', 'set-tg-chat': 'telegram_chat_id',
   'set-bark': 'bark_url', 'set-serverchan': 'serverchan_key', 'set-webhook': 'webhook_url',
   'set-metasource': 'meta_source', 'set-tmdbkey': 'tmdb_api_key', 'set-library': 'library_root',
+  'set-deftmpl': 'default_rename_template',
 };
+let SETTINGS = {};
+
 async function loadSettings() {
   const s = await api('/api/settings');
+  SETTINGS = s;
   for (const [id, key] of Object.entries(SET_MAP)) {
     const el = $(id); if (!el) continue;
     if (el.type === 'checkbox') el.checked = !!s[key];
     else el.value = s[key] ?? '';
   }
+  renderTmplRows(s.rename_templates || []);
+  renderTagRows(s.rename_tags || []);
   settingsLoaded = true;
 }
 function collectSettings() {
@@ -497,15 +533,58 @@ function collectSettings() {
   }
   return out;
 }
-async function saveSettings(btn) {
+async function saveSettings(btn, extra = {}) {
   btn.disabled = true;
-  try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(collectSettings()) }); toast('设置已保存'); loadStatus(); }
-  catch (err) { toast('保存失败: ' + err.message); }
+  try {
+    SETTINGS = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ ...collectSettings(), ...extra }) });
+    toast('设置已保存'); loadStatus();
+  } catch (err) { toast('保存失败: ' + err.message); }
   finally { btn.disabled = false; }
 }
+
+// ---- template-preset rows ----
+function tmplRow(t = { name: '', template: '' }) {
+  const div = document.createElement('div');
+  div.className = 'tmpl-row';
+  div.innerHTML = `<input class="t-name" placeholder="模板名" value="${esc(t.name)}">
+    <input class="t-tmpl" placeholder="\${title} (\${year})/Season \${seasonFormat}/..." value="${esc(t.template)}">
+    <button type="button" class="row-del">✕</button>`;
+  div.querySelector('.row-del').addEventListener('click', () => div.remove());
+  return div;
+}
+function renderTmplRows(list) { const box = $('tmpl-list'); box.innerHTML = ''; list.forEach((t) => box.appendChild(tmplRow(t))); }
+function collectTmpls() {
+  return [...$('tmpl-list').querySelectorAll('.tmpl-row')].map((r) => ({
+    name: r.querySelector('.t-name').value.trim(), template: r.querySelector('.t-tmpl').value.trim(),
+  })).filter((t) => t.name && t.template);
+}
+// ---- keyword-rule rows ----
+function tagRow(t = { var: '', label: '', patterns: [] }) {
+  const div = document.createElement('div');
+  div.className = 'tag-row';
+  div.innerHTML = `<input class="g-var" placeholder="lang" value="${esc(t.var)}">
+    <input class="g-label" placeholder="简体中文" value="${esc(t.label)}">
+    <input class="g-pat" placeholder="CHS,简体,GB" value="${esc((t.patterns || []).join(','))}">
+    <button type="button" class="row-del">✕</button>`;
+  div.querySelector('.row-del').addEventListener('click', () => div.remove());
+  return div;
+}
+function renderTagRows(list) { const box = $('tag-list'); box.innerHTML = ''; list.forEach((t) => box.appendChild(tagRow(t))); }
+function collectTags() {
+  return [...$('tag-list').querySelectorAll('.tag-row')].map((r) => ({
+    var: r.querySelector('.g-var').value.trim(),
+    label: r.querySelector('.g-label').value.trim(),
+    patterns: r.querySelector('.g-pat').value.split(',').map((x) => x.trim()).filter(Boolean),
+  })).filter((t) => t.var && t.label && t.patterns.length);
+}
+
+$('tmpl-add').addEventListener('click', () => $('tmpl-list').appendChild(tmplRow()));
+$('tag-add').addEventListener('click', () => $('tag-list').appendChild(tagRow()));
 $('set-save-crawl').addEventListener('click', (e) => saveSettings(e.target));
 $('set-save-notify').addEventListener('click', (e) => saveSettings(e.target));
 $('set-save-meta').addEventListener('click', (e) => saveSettings(e.target));
+$('set-save-rename').addEventListener('click', (e) =>
+  saveSettings(e.target, { rename_templates: collectTmpls(), rename_tags: collectTags() }));
 $('set-test').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(collectSettings()) }); const r = await api('/api/settings/test-notify', { method: 'POST' }); toast(r.message); }
@@ -516,6 +595,7 @@ $('set-test').addEventListener('click', async (e) => {
 // initial load + light polling
 (async () => {
   try { TYPES = await api('/api/target-types'); } catch (_) {}
+  try { await loadSettings(); } catch (_) {}
   await loadTargets();
   loadStatus(); loadFeeds(); loadItems();
 })();

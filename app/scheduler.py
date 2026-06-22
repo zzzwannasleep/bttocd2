@@ -33,9 +33,19 @@ def _plan_location(feed: dict, item: dict) -> str:
     if ep is None:
         return base_location  # can't place it without an episode number
     ep = episode.apply_offset(ep, feed.get("episode_offset") or 0)
-    meta = {"title": feed.get("title_cn") or feed.get("original_title"), "year": feed.get("year")}
-    plan = naming.build(meta, feed.get("season") or 1, ep, feed.get("rename_template") or None)
-    root = (feed.get("library_path") or appsettings.all_settings().get("library_root") or "").rstrip("/")
+    s = appsettings.all_settings()
+    meta = {
+        "title": feed.get("title_cn") or feed.get("original_title"),
+        "title_cn": feed.get("title_cn"),
+        "original_title": feed.get("original_title"),
+        "year": feed.get("year"),
+        "meta_source": feed.get("meta_source"),
+        "meta_id": feed.get("meta_id"),
+    }
+    template = feed.get("rename_template") or s.get("default_rename_template") or None
+    ctx = naming.resolve_context(meta, feed.get("season") or 1, ep, item.get("title", ""), s.get("rename_tags"))
+    plan = naming.build(template, ctx)
+    root = (feed.get("library_path") or s.get("library_root") or "").rstrip("/")
     location = f"{root}/{plan['folder']}" if root else plan["folder"]
     item["dest"] = plan["full"] + ".*"
     return location

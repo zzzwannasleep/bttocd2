@@ -125,6 +125,30 @@
         </section>
 
         <section class="card">
+          <h2>重命名模板 · 关键词</h2>
+          <div class="muted small">
+            内置变量：<code>${title}</code> <code>${year}</code> <code>${season}</code>
+            <code>${seasonFormat}</code> <code>${episode}</code> <code>${episodeFormat}</code>
+            <code>${subgroup}</code> <code>${resolution}</code> <code>${source}</code>，
+            以及下面自定义的关键词变量。
+          </div>
+          <label>默认模板<input id="set-deftmpl" placeholder="${title} (${year})/Season ${seasonFormat}/${title} - S${seasonFormat}E${episodeFormat}" /></label>
+
+          <div class="section-label">模板预设（新增源时可一键套用）</div>
+          <div id="tmpl-list" class="row-list"></div>
+          <button type="button" class="ghost" id="tmpl-add">+ 添加模板</button>
+
+          <div class="section-label">自定义关键词（匹配发布标题 → 输出文本，供 ${var} 使用）</div>
+          <div class="tag-row tag-head muted small"><span>变量名</span><span>输出文本</span><span>关键词（逗号分隔）</span><span></span></div>
+          <div id="tag-list" class="row-list"></div>
+          <button type="button" class="ghost" id="tag-add">+ 添加关键词规则</button>
+
+          <div class="muted small" style="margin-top:10px">例：变量名 <code>lang</code>、输出 <code>简体中文</code>、关键词 <code>CHS,简体,GB,SC</code>，
+            模板里写 <code>${lang}</code>，标题含 CHS 时自动变成「简体中文」。</div>
+          <div class="modal-actions"><button id="set-save-rename">保存重命名设置</button></div>
+        </section>
+
+        <section class="card">
           <div class="row-between">
             <h2>通知</h2>
             <label class="switch-row"><span class="muted small">启用通知</span>
@@ -217,8 +241,12 @@
       <label class="switch-row"><span>自动重命名整理（按集数落到 Season 目录）</span>
         <span class="switch"><input id="f-rename" type="checkbox" /><span class="slider"></span></span>
       </label>
-      <label>命名模板（可选，留空用默认）
-        <input id="f-template" placeholder="{title} ({year})/Season {season:02d}/{title} - S{season:02d}E{episode:02d}" />
+      <label>套用模板（预设）<select id="f-tmpl-preset"></select></label>
+      <label>命名模板（可改，留空用全局默认）
+        <input id="f-template" placeholder="${title} (${year})/Season ${seasonFormat}/${title} - S${seasonFormat}E${episodeFormat}" />
+      </label>
+      <label>预览样例标题（仅用于预览匹配效果）
+        <input id="f-sample" placeholder="[ANi] 标题 - 01 [1080p][WEB-DL][CHS].mkv" />
       </label>
       <div id="name-preview" class="hint hidden"></div>
 

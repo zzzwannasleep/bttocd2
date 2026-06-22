@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import httpx
 
-from . import appsettings, crud, meta as meta_mod, notify, scheduler, security, targets as targets_mod
+from . import appsettings, crud, episode as episode_mod, meta as meta_mod, naming, notify, scheduler, security, targets as targets_mod
 from .config import settings
 from .database import init_db
 
@@ -287,6 +287,43 @@ def meta_search(body: MetaSearchBody, user: str = Depends(require_login)):
         return meta_mod.search(body.keyword.strip())
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"刮削失败: {exc}")
+
+
+class NamePreviewBody(BaseModel):
+    template: str = ""
+    item_title: str = ""
+    title: str = ""
+    title_cn: str = ""
+    original_title: str = ""
+    year: str = ""
+    season: int = 1
+    episode_offset: int = 0
+    meta_source: str = ""
+    meta_id: str = ""
+    sample_episode: float = 1
+
+
+@app.post("/api/name-preview")
+def name_preview(body: NamePreviewBody, user: str = Depends(require_login)):
+    """Render the rename template against a sample release title using the global
+    keyword rules — so the UI preview matches real dispatch behavior."""
+    s = appsettings.all_settings()
+    # If a real release title is given, parse its episode; else use the sample.
+    ep = episode_mod.parse_episode(body.item_title)
+    ep = (ep if ep is not None else body.sample_episode) + (body.episode_offset or 0)
+    meta = {
+        "title": body.title_cn or body.title or body.original_title,
+        "title_cn": body.title_cn or body.title,
+        "original_title": body.original_title,
+        "year": body.year,
+        "meta_source": body.meta_source,
+        "meta_id": body.meta_id,
+    }
+    template = body.template or s.get("default_rename_template") or naming.DEFAULT_TEMPLATE
+    sample_title = body.item_title or f"[SubGroup] {meta['title']} - {int(ep):02d} [1080p][WEB-DL][CHS].mkv"
+    ctx = naming.resolve_context(meta, body.season or 1, ep, sample_title, s.get("rename_tags"))
+    plan = naming.build(template, ctx)
+    return {"full": plan["full"] + ".mkv", "folder": plan["folder"], "filename": plan["filename"], "context": ctx}
 
 
 # Poster image proxy — avoids hotlink/geo issues and keeps the browser on our origin.
