@@ -86,6 +86,25 @@ dmhy / Nyaa 这类**本身带 magnet 的 RSS** 直接填 RSS 地址即可。
   并设置 `FLARESOLVERR_URL=http://flaresolverr:8191`。
 - **换 IP**：设置 `CRAWL_PROXY` 走代理可进一步降低封禁概率。
 
+## 刮削 · 元数据 · 重命名整理（追番）
+
+参考 ani-rss，订阅可以挂上影视元数据并自动整理成 Emby/Jellyfin 目录结构。
+
+- **刮削**：新增/编辑源时点「刮削」，按名字搜 **Bangumi**（免 Key，默认）或 **TMDB**
+  （在「设置 → 元数据」填 API Key）。选中后自动填入标题/年份/海报/总集数；解析源在列表里
+  以**海报卡片**展示。
+- **季 / 集偏移**：`Season` 决定落到哪个季目录；`集数偏移`用于分割放送或跨季编号
+  （如 RSS 里是 28 集、实际是第 2 季第 16 集，就填 `-12`）。
+- **自动重命名整理**：打开开关后，每个剧集按解析到的集号落到
+  `媒体库/标题 (年份)/Season NN/` 目录（命名模板可自定义，默认
+  `{title} ({year})/Season {season:02d}/{title} - S{season:02d}E{episode:02d}`）。
+  弹窗里有实时命名预览。媒体库根目录在「设置」里设全局默认，单个订阅可覆盖。
+
+> **当前实现**：在分发时把下载**落地目录**设为对应的 Emby/Jellyfin 季目录（对
+> CloudDrive2 / qBittorrent / Transmission 都生效，非破坏性）。**文件名级**的
+> `SxxEyy` 重命名（在下载器里改文件名）属于下一步，需要下载完成后回调各下载器的
+> 文件接口，正在推进中。
+
 ## 自动构建镜像（GitHub Actions）
 
 仓库内置 `.github/workflows/docker-build.yml`，push 到 `main` 或打 `v*` tag 时自动

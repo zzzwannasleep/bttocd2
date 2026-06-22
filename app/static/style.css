@@ -124,6 +124,32 @@ label { display: block; margin: 11px 0; color: var(--muted); font-size: 13px; }
 .modal-actions { margin-top: 16px; }
 .preview { background: var(--bg); padding: 12px; border-radius: 8px; max-height: 200px; overflow: auto; white-space: pre-wrap; margin-top: 12px; font-size: 12.5px; }
 
+/* Feed poster cards */
+.feeds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; margin-top: 14px; }
+.feed-card { display: flex; gap: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.feed-card .poster { width: 64px; height: 90px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--bg); }
+.feed-card .poster.ph { display: grid; place-items: center; font-size: 24px; color: var(--muted); }
+.feed-card .fc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.feed-card .fc-title { font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.feed-card .fc-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-card .fc-meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.feed-card .fc-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; gap: 8px; }
+.feed-card .fc-actions { display: flex; gap: 5px; }
+.feed-card .fc-actions button { padding: 5px 9px; font-size: 12px; }
+
+/* Scrape picker */
+.scrape-row { display: flex; gap: 8px; }
+.scrape-row input { margin-top: 0; }
+.scrape-row button { white-space: nowrap; }
+.scrape-results { display: flex; gap: 8px; overflow-x: auto; margin: 10px 0 0; }
+.scrape-results:empty { margin: 0; }
+.scrape-cand { width: 92px; flex-shrink: 0; cursor: pointer; text-align: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--bg); }
+.scrape-cand:hover { border-color: var(--accent); }
+.scrape-cand img { width: 100%; height: 116px; object-fit: cover; border-radius: 5px; background: var(--panel2); }
+.scrape-cand .sc-t { font-size: 11px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta-picked { display: flex; gap: 12px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 10px 0; }
+.meta-picked img { width: 46px; height: 64px; object-fit: cover; border-radius: 5px; }
+
 /* Toast */
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 12px 20px; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.4); z-index: 100; }
 

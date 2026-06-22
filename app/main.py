@@ -10,11 +10,13 @@ from urllib.parse import urlparse
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import appsettings, crud, notify, scheduler, security, targets as targets_mod
+import httpx
+
+from . import appsettings, crud, meta as meta_mod, notify, scheduler, security, targets as targets_mod
 from .config import settings
 from .database import init_db
 
@@ -100,6 +102,19 @@ class FeedBody(BaseModel):
     target_folder: str = Field(default="/", max_length=500)
     cookie: str = Field(default="", max_length=8000)
     enabled: bool = True
+    # metadata / scraping / rename
+    title_cn: str = Field(default="", max_length=300)
+    original_title: str = Field(default="", max_length=300)
+    year: str = Field(default="", max_length=10)
+    season: int = Field(default=1, ge=0, le=99)
+    episode_offset: int = Field(default=0, ge=-9999, le=9999)
+    total_episodes: int = Field(default=0, ge=0, le=99999)
+    poster: str = Field(default="", max_length=1000)
+    meta_source: str = Field(default="", max_length=20)
+    meta_id: str = Field(default="", max_length=40)
+    library_path: str = Field(default="", max_length=500)
+    rename_enabled: bool = False
+    rename_template: str = Field(default="", max_length=300)
 
     @field_validator("url")
     @classmethod
@@ -257,6 +272,46 @@ def test_notify(user: str = Depends(require_login)):
     if not sent:
         return {"ok": False, "message": "未启用通知或没有配置任何渠道"}
     return {"ok": True, "message": "已发送到: " + ", ".join(sent)}
+
+
+# --------------------------------------------------------------------------- #
+# Metadata scraping
+# --------------------------------------------------------------------------- #
+class MetaSearchBody(BaseModel):
+    keyword: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/meta/search")
+def meta_search(body: MetaSearchBody, user: str = Depends(require_login)):
+    try:
+        return meta_mod.search(body.keyword.strip())
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"刮削失败: {exc}")
+
+
+# Poster image proxy — avoids hotlink/geo issues and keeps the browser on our origin.
+_IMG_HOSTS = ("bgm.tv", "tmdb.org", "themoviedb.org")
+
+
+@app.get("/api/img")
+def img_proxy(url: str, user: str = Depends(require_login)):
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    if not (url.startswith("https://") and any(host == h or host.endswith("." + h) for h in _IMG_HOSTS)):
+        raise HTTPException(400, "url not allowed")
+    proxy = settings.http_proxy or None
+    try:
+        with httpx.Client(timeout=20, proxy=proxy, follow_redirects=True) as c:
+            r = c.get(url, headers={"User-Agent": meta_mod.UA, "Referer": "https://bgm.tv/"})
+            r.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"image fetch failed: {exc}")
+    return Response(
+        content=r.content,
+        media_type=r.headers.get("content-type", "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 # --------------------------------------------------------------------------- #

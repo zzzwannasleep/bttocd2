@@ -117,46 +117,52 @@ def get_feed(feed_id: int) -> dict[str, Any] | None:
         return _row(conn.execute("SELECT * FROM feeds WHERE id=?", (feed_id,)).fetchone())
 
 
+# Writable feed columns and their default value when creating.
+_FEED_DEFAULTS: dict[str, Any] = {
+    "name": "", "url": "", "kind": "auto", "interval_minutes": 30,
+    "include_regex": "", "exclude_regex": "", "target_id": None,
+    "target_folder": "/", "cookie": "",
+    "title_cn": "", "original_title": "", "year": "", "season": 1,
+    "episode_offset": 0, "total_episodes": 0, "poster": "",
+    "meta_source": "", "meta_id": "", "library_path": "",
+    "rename_enabled": 0, "rename_template": "", "enabled": 1,
+}
+_FEED_INT = {"interval_minutes", "season", "episode_offset", "total_episodes"}
+_FEED_BOOL = {"enabled", "rename_enabled"}
+
+
+def _coerce_feed_value(field: str, value: Any) -> Any:
+    if field in _FEED_BOOL:
+        return 1 if value else 0
+    if field == "target_id":
+        return int(value) if value not in (None, "") else None
+    if field in _FEED_INT:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return _FEED_DEFAULTS[field]
+    return value
+
+
 def create_feed(data: dict[str, Any]) -> dict[str, Any]:
+    row = {f: _coerce_feed_value(f, data.get(f, default)) for f, default in _FEED_DEFAULTS.items()}
+    cols = list(row.keys()) + ["created_at"]
+    vals = list(row.values()) + [now()]
+    placeholders = ",".join("?" * len(cols))
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO feeds
-               (name, url, kind, interval_minutes, include_regex, exclude_regex,
-                target_id, target_folder, cookie, enabled, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                data["name"],
-                data["url"],
-                data.get("kind", "auto"),
-                int(data["interval_minutes"]),
-                data.get("include_regex", ""),
-                data.get("exclude_regex", ""),
-                data.get("target_id"),
-                data.get("target_folder", "/"),
-                data.get("cookie", ""),
-                1 if data.get("enabled", True) else 0,
-                now(),
-            ),
+            f"INSERT INTO feeds ({','.join(cols)}) VALUES ({placeholders})", vals
         )
         feed_id = cur.lastrowid
     return get_feed(feed_id)  # type: ignore[return-value]
 
 
 def update_feed(feed_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
-    fields = [
-        "name", "url", "kind", "interval_minutes", "include_regex",
-        "exclude_regex", "target_id", "target_folder", "cookie", "enabled",
-    ]
     sets, vals = [], []
-    for f in fields:
-        if f in data:
-            sets.append(f"{f}=?")
-            v = data[f]
-            if f == "enabled":
-                v = 1 if v else 0
-            if f == "interval_minutes":
-                v = int(v)
-            vals.append(v)
+    for field in _FEED_DEFAULTS:
+        if field in data:
+            sets.append(f"{field}=?")
+            vals.append(_coerce_feed_value(field, data[field]))
     if not sets:
         return get_feed(feed_id)
     vals.append(feed_id)
@@ -201,8 +207,8 @@ def record_item(feed_id: int, item: dict[str, Any], status: str, error: str = ""
     with get_conn() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO items
-               (feed_id, guid, infohash, title, link, magnet, status, error, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+               (feed_id, guid, infohash, title, link, magnet, status, error, dest, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 feed_id,
                 item.get("guid", ""),
@@ -212,6 +218,7 @@ def record_item(feed_id: int, item: dict[str, Any], status: str, error: str = ""
                 item.get("magnet", "")[:2000],
                 status,
                 error[:1000],
+                item.get("dest", "")[:1000],
                 now(),
             ),
         )

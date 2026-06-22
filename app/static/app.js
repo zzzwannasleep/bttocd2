@@ -177,27 +177,41 @@ $('targets-table').addEventListener('click', async (e) => {
 // --------------------------------------------------------------------------- //
 // Feeds
 // --------------------------------------------------------------------------- //
+function posterUrl(url) { return url ? '/api/img?url=' + encodeURIComponent(url) : ''; }
+
 async function loadFeeds() {
   FEEDS = await api('/api/feeds');
   $('s-sources').textContent = FEEDS.length;
-  const tbody = $('feeds-table').querySelector('tbody');
-  tbody.innerHTML = '';
+  const grid = $('feeds-grid');
+  grid.innerHTML = '';
   $('feeds-empty').classList.toggle('hidden', FEEDS.length > 0);
   for (const f of FEEDS) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><div class="cell-name">${kindBadge(f.kind)}<b>${esc(f.name)}</b></div></td>
-      <td class="trunc" title="${esc(f.url)}">${esc(f.url)}</td>
-      <td>${f.interval_minutes}m</td>
-      <td class="small">${f.target_id ? esc(targetName(f.target_id)) : '<span class="pill failed">未配置</span>'}</td>
-      <td class="muted small" title="检查于 ${fmtTime(f.last_checked)}">${esc(f.last_status || '未检查')}</td>
-      <td><label class="switch"><input type="checkbox" data-toggle="${f.id}" ${f.enabled ? 'checked' : ''}><span class="slider"></span></label></td>
-      <td><div class="row-actions">
-        <button class="ghost" data-act="check" data-id="${f.id}">检查</button>
-        <button class="ghost" data-act="edit" data-id="${f.id}">编辑</button>
-        <button class="danger" data-act="del" data-id="${f.id}">删除</button>
-      </div></td>`;
-    tbody.appendChild(tr);
+    const title = f.title_cn || f.name;
+    const poster = posterUrl(f.poster);
+    const tags = [];
+    tags.push(`<span>${f.interval_minutes}m</span>`);
+    tags.push(`<span>→ ${f.target_id ? esc(targetName(f.target_id)) : '<b style="color:var(--err)">未配置</b>'}</span>`);
+    if (f.rename_enabled) tags.push(`<span>🗂 整理 S${String(f.season).padStart(2, '0')}</span>`);
+    if (f.total_episodes) tags.push(`<span>共${f.total_episodes}话</span>`);
+    const card = document.createElement('div');
+    card.className = 'feed-card';
+    card.innerHTML = `
+      ${poster ? `<img class="poster" src="${poster}" alt="" onerror="this.classList.add('ph');this.removeAttribute('src');this.textContent='🎬'">`
+               : `<div class="poster ph">🎬</div>`}
+      <div class="fc-body">
+        <div class="fc-title">${kindBadge(f.kind)}<b title="${esc(title)}">${esc(title)}</b></div>
+        <div class="fc-meta">${tags.join('')}</div>
+        <div class="fc-meta" title="检查于 ${fmtTime(f.last_checked)}">${esc(f.last_status || '未检查')}</div>
+        <div class="fc-foot">
+          <label class="switch"><input type="checkbox" data-toggle="${f.id}" ${f.enabled ? 'checked' : ''}><span class="slider"></span></label>
+          <div class="fc-actions">
+            <button class="ghost" data-act="check" data-id="${f.id}">检查</button>
+            <button class="ghost" data-act="edit" data-id="${f.id}">编辑</button>
+            <button class="danger" data-act="del" data-id="${f.id}">删除</button>
+          </div>
+        </div>
+      </div>`;
+    grid.appendChild(card);
   }
 }
 
@@ -244,6 +258,27 @@ function fillTargetSelect(selectedId) {
   syncLocationLabel();
 }
 
+function renderMetaPicked() {
+  const poster = $('f-poster').value, src = $('f-metasource').value, total = $('f-total').value;
+  const box = $('meta-picked');
+  if (!poster && !src) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  $('meta-poster').src = posterUrl(poster);
+  $('meta-info').innerHTML = `来源 ${esc(src || '-')}${total ? ' · 共 ' + total + ' 话' : ''}`;
+}
+
+function updateNamePreview() {
+  const el = $('name-preview');
+  if (!$('f-rename').checked) { el.classList.add('hidden'); return; }
+  const title = ($('f-title').value || $('f-name').value || 'Title').replace(/[\\/:*?"<>|]/g, '');
+  const year = $('f-year').value.trim();
+  const s = String(parseInt($('f-season').value, 10) || 1).padStart(2, '0');
+  const root = ($('f-library').value || '<媒体库根>').replace(/\/$/, '');
+  const yp = year ? ` (${year})` : '';
+  el.classList.remove('hidden');
+  el.innerHTML = `示例：<code>${esc(root)}/${esc(title)}${esc(yp)}/Season ${s}/${esc(title)} - S${s}E01.mkv</code>`;
+}
+
 function openModal(feed) {
   $('modal-title').textContent = feed ? '编辑源' : '新增源';
   $('feed-id').value = feed ? feed.id : '';
@@ -256,10 +291,25 @@ function openModal(feed) {
   $('f-exclude').value = feed ? feed.exclude_regex : '';
   $('f-cookie').value = feed ? (feed.cookie || '') : '';
   $('f-enabled').checked = feed ? !!feed.enabled : true;
+  // metadata
+  $('f-title').value = feed ? (feed.title_cn || '') : '';
+  $('f-year').value = feed ? (feed.year || '') : '';
+  $('f-season').value = feed ? (feed.season ?? 1) : 1;
+  $('f-offset').value = feed ? (feed.episode_offset ?? 0) : 0;
+  $('f-library').value = feed ? (feed.library_path || '') : '';
+  $('f-rename').checked = feed ? !!feed.rename_enabled : false;
+  $('f-template').value = feed ? (feed.rename_template || '') : '';
+  $('f-poster').value = feed ? (feed.poster || '') : '';
+  $('f-metasource').value = feed ? (feed.meta_source || '') : '';
+  $('f-metaid').value = feed ? (feed.meta_id || '') : '';
+  $('f-total').value = feed ? (feed.total_episodes || '') : '';
+  $('f-scrape-kw').value = feed ? (feed.title_cn || feed.name || '') : '';
+  $('scrape-results').innerHTML = '';
+  renderMetaPicked();
   fillTargetSelect(feed ? feed.target_id : (TARGETS[0] && TARGETS[0].id));
   $('form-err').textContent = '';
   $('preview-out').classList.add('hidden');
-  syncKindUI();
+  syncKindUI(); updateNamePreview();
   $('modal').classList.remove('hidden');
 }
 function closeModal() { $('modal').classList.add('hidden'); }
@@ -277,8 +327,52 @@ function formPayload() {
     exclude_regex: $('f-exclude').value.trim(),
     cookie: $('f-cookie').value.trim(),
     enabled: $('f-enabled').checked,
+    title_cn: $('f-title').value.trim(),
+    year: $('f-year').value.trim(),
+    season: parseInt($('f-season').value, 10) || 1,
+    episode_offset: parseInt($('f-offset').value, 10) || 0,
+    total_episodes: parseInt($('f-total').value, 10) || 0,
+    poster: $('f-poster').value,
+    meta_source: $('f-metasource').value,
+    meta_id: $('f-metaid').value,
+    library_path: $('f-library').value.trim(),
+    rename_enabled: $('f-rename').checked,
+    rename_template: $('f-template').value.trim(),
   };
 }
+
+// Scrape metadata
+$('f-scrape-btn').addEventListener('click', async () => {
+  const kw = $('f-scrape-kw').value.trim() || $('f-name').value.trim();
+  if (!kw) { toast('请输入要搜索的名称'); return; }
+  const box = $('scrape-results');
+  box.innerHTML = '<span class="muted small">刮削中…</span>';
+  try {
+    const results = await api('/api/meta/search', { method: 'POST', body: JSON.stringify({ keyword: kw }) });
+    if (!results.length) { box.innerHTML = '<span class="muted small">没有匹配结果</span>'; return; }
+    box.innerHTML = '';
+    for (const r of results) {
+      const el = document.createElement('div');
+      el.className = 'scrape-cand';
+      el.innerHTML = `<img src="${posterUrl(r.poster)}" onerror="this.style.visibility='hidden'"><div class="sc-t" title="${esc(r.title)} ${esc(r.year)}">${esc(r.title)}</div><div class="sc-t muted">${esc(r.year)}</div>`;
+      el.addEventListener('click', () => {
+        $('f-title').value = r.title || '';
+        $('f-year').value = r.year || '';
+        $('f-poster').value = r.poster || '';
+        $('f-metasource').value = r.source || '';
+        $('f-metaid').value = r.id || '';
+        $('f-total').value = r.total_episodes || '';
+        if (!$('f-rename').checked) $('f-rename').checked = true;
+        renderMetaPicked(); updateNamePreview();
+        toast('已选用：' + r.title);
+      });
+      box.appendChild(el);
+    }
+  } catch (err) { box.innerHTML = '<span class="error">' + esc(err.message) + '</span>'; }
+});
+['f-rename', 'f-title', 'f-year', 'f-season', 'f-library'].forEach((id) =>
+  $(id).addEventListener('input', updateNamePreview));
+$('f-rename').addEventListener('change', updateNamePreview);
 
 // --------------------------------------------------------------------------- //
 $('new-feed').addEventListener('click', () => openModal(null));
@@ -306,7 +400,7 @@ $('check-all').addEventListener('click', async (e) => {
   loadFeeds(); loadItems(); loadStatus();
 });
 
-$('feeds-table').addEventListener('change', async (e) => {
+$('feeds-grid').addEventListener('change', async (e) => {
   const id = e.target.dataset.toggle; if (!id) return;
   const feed = FEEDS.find((f) => String(f.id) === id); if (!feed) return;
   try {
@@ -315,7 +409,7 @@ $('feeds-table').addEventListener('change', async (e) => {
   } catch (err) { toast('操作失败: ' + err.message); e.target.checked = !e.target.checked; }
 });
 
-$('feeds-table').addEventListener('click', async (e) => {
+$('feeds-grid').addEventListener('click', async (e) => {
   const btn = e.target.closest('button'); if (!btn) return;
   const id = btn.dataset.id, act = btn.dataset.act;
   if (act === 'del') {
@@ -384,6 +478,7 @@ const SET_MAP = {
   'set-notify': 'notify_enabled', 'set-onsuccess': 'notify_on_success', 'set-onfailure': 'notify_on_failure',
   'set-tg-token': 'telegram_bot_token', 'set-tg-chat': 'telegram_chat_id',
   'set-bark': 'bark_url', 'set-serverchan': 'serverchan_key', 'set-webhook': 'webhook_url',
+  'set-metasource': 'meta_source', 'set-tmdbkey': 'tmdb_api_key', 'set-library': 'library_root',
 };
 async function loadSettings() {
   const s = await api('/api/settings');
@@ -410,6 +505,7 @@ async function saveSettings(btn) {
 }
 $('set-save-crawl').addEventListener('click', (e) => saveSettings(e.target));
 $('set-save-notify').addEventListener('click', (e) => saveSettings(e.target));
+$('set-save-meta').addEventListener('click', (e) => saveSettings(e.target));
 $('set-test').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try { await api('/api/settings', { method: 'PUT', body: JSON.stringify(collectSettings()) }); const r = await api('/api/settings/test-notify', { method: 'POST' }); toast(r.message); }

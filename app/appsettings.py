@@ -34,7 +34,12 @@ NOTIFY_KEYS = {
     "serverchan_key": str,
     "webhook_url": str,
 }
-ALL_KEYS = {**CRAWL_KEYS, **NOTIFY_KEYS}
+META_KEYS = {
+    "meta_source": str,       # 'bangumi' | 'tmdb'
+    "tmdb_api_key": str,
+    "library_root": str,      # default Emby/Jellyfin library root
+}
+ALL_KEYS = {**CRAWL_KEYS, **NOTIFY_KEYS, **META_KEYS}
 
 STATE: dict = {}
 
@@ -55,6 +60,9 @@ def _defaults() -> dict:
         "bark_url": "",
         "serverchan_key": "",
         "webhook_url": "",
+        "meta_source": "bangumi",
+        "tmdb_api_key": "",
+        "library_root": "",
     }
 
 

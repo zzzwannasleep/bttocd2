@@ -46,12 +46,7 @@
             </div>
           </div>
           <div id="anti-info" class="muted small"></div>
-          <div class="table-wrap">
-            <table id="feeds-table">
-              <thead><tr><th>源</th><th>地址</th><th>间隔</th><th>分发到</th><th>状态</th><th>启用</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
+          <div id="feeds-grid" class="feeds-grid"></div>
           <div id="feeds-empty" class="empty hidden">还没有解析源，点「+ 新增源」添加一个 RSS 或 1lou 列表页。</div>
         </section>
       </div>
@@ -111,6 +106,22 @@
             <label>FlareSolverr 地址（可选）<input id="set-flaresolverr" placeholder="http://flaresolverr:8191" /></label>
           </div>
           <div class="modal-actions"><button id="set-save-crawl">保存抓取设置</button></div>
+        </section>
+
+        <section class="card">
+          <h2>元数据 · 媒体库</h2>
+          <div class="muted small">刮削来源与媒体库根目录，用于海报和自动重命名整理。</div>
+          <div class="grid2">
+            <label>刮削来源
+              <select id="set-metasource">
+                <option value="bangumi">Bangumi（免 Key，默认）</option>
+                <option value="tmdb">TMDB（需 API Key）</option>
+              </select>
+            </label>
+            <label>TMDB API Key（选 TMDB 时填）<input id="set-tmdbkey" placeholder="TMDB v3 API Key" /></label>
+          </div>
+          <label>媒体库根目录（全局默认，订阅可覆盖）<input id="set-library" placeholder="/media/anime" /></label>
+          <div class="modal-actions"><button id="set-save-meta">保存元数据设置</button></div>
         </section>
 
         <section class="card">
@@ -184,6 +195,33 @@
       <label class="switch-row"><span>启用该源</span>
         <span class="switch"><input id="f-enabled" type="checkbox" checked /><span class="slider"></span></span>
       </label>
+
+      <div class="section-label">媒体库 · 刮削（可选，自动重命名整理为 Emby/Jellyfin 目录）</div>
+      <div class="scrape-row">
+        <input id="f-scrape-kw" placeholder="番剧/影视名搜索元数据…" />
+        <button type="button" class="ghost" id="f-scrape-btn">刮削</button>
+      </div>
+      <div id="scrape-results" class="scrape-results"></div>
+      <input type="hidden" id="f-poster" /><input type="hidden" id="f-metasource" />
+      <input type="hidden" id="f-metaid" /><input type="hidden" id="f-total" />
+      <div class="meta-picked hidden" id="meta-picked">
+        <img id="meta-poster" alt="" /><div id="meta-info" class="small"></div>
+      </div>
+      <div class="grid2">
+        <label>标题<input id="f-title" placeholder="刮削后自动填入，可手改" /></label>
+        <label>年份<input id="f-year" placeholder="2023" /></label>
+        <label>季 Season<input id="f-season" type="number" min="0" max="99" value="1" /></label>
+        <label>集数偏移<input id="f-offset" type="number" value="0" /></label>
+      </div>
+      <label>媒体库目录（留空用「设置」里的全局根目录）<input id="f-library" placeholder="/media/anime" /></label>
+      <label class="switch-row"><span>自动重命名整理（按集数落到 Season 目录）</span>
+        <span class="switch"><input id="f-rename" type="checkbox" /><span class="slider"></span></span>
+      </label>
+      <label>命名模板（可选，留空用默认）
+        <input id="f-template" placeholder="{title} ({year})/Season {season:02d}/{title} - S{season:02d}E{episode:02d}" />
+      </label>
+      <div id="name-preview" class="hint hidden"></div>
+
       <p id="form-err" class="error"></p>
       <pre id="preview-out" class="preview hidden"></pre>
       <div class="row-between modal-actions">

@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS feeds (
     target_folder   TEXT NOT NULL DEFAULT '/',
     cookie          TEXT NOT NULL DEFAULT '',
     enabled         INTEGER NOT NULL DEFAULT 1,
+    -- metadata / scraping / rename (anime-style subscriptions)
+    title_cn        TEXT NOT NULL DEFAULT '',
+    original_title  TEXT NOT NULL DEFAULT '',
+    year            TEXT NOT NULL DEFAULT '',
+    season          INTEGER NOT NULL DEFAULT 1,
+    episode_offset  INTEGER NOT NULL DEFAULT 0,
+    total_episodes  INTEGER NOT NULL DEFAULT 0,
+    poster          TEXT NOT NULL DEFAULT '',
+    meta_source     TEXT NOT NULL DEFAULT '',
+    meta_id         TEXT NOT NULL DEFAULT '',
+    library_path    TEXT NOT NULL DEFAULT '',
+    rename_enabled  INTEGER NOT NULL DEFAULT 0,
+    rename_template TEXT NOT NULL DEFAULT '',
     last_checked    REAL NOT NULL DEFAULT 0,
     last_status     TEXT NOT NULL DEFAULT '',
     created_at      REAL NOT NULL
@@ -72,6 +85,7 @@ CREATE TABLE IF NOT EXISTS items (
     magnet      TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'pending',
     error       TEXT NOT NULL DEFAULT '',
+    dest        TEXT NOT NULL DEFAULT '',
     created_at  REAL NOT NULL,
     UNIQUE(feed_id, guid)
 );
@@ -95,6 +109,26 @@ def init_db() -> None:
             conn.execute("ALTER TABLE feeds ADD COLUMN cookie TEXT NOT NULL DEFAULT ''")
         if "target_id" not in cols:
             conn.execute("ALTER TABLE feeds ADD COLUMN target_id INTEGER")
+        feed_adds = {
+            "title_cn": "TEXT NOT NULL DEFAULT ''",
+            "original_title": "TEXT NOT NULL DEFAULT ''",
+            "year": "TEXT NOT NULL DEFAULT ''",
+            "season": "INTEGER NOT NULL DEFAULT 1",
+            "episode_offset": "INTEGER NOT NULL DEFAULT 0",
+            "total_episodes": "INTEGER NOT NULL DEFAULT 0",
+            "poster": "TEXT NOT NULL DEFAULT ''",
+            "meta_source": "TEXT NOT NULL DEFAULT ''",
+            "meta_id": "TEXT NOT NULL DEFAULT ''",
+            "library_path": "TEXT NOT NULL DEFAULT ''",
+            "rename_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "rename_template": "TEXT NOT NULL DEFAULT ''",
+        }
+        for col, decl in feed_adds.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE feeds ADD COLUMN {col} {decl}")
+        item_cols = {r[1] for r in conn.execute("PRAGMA table_info(items)")}
+        if "dest" not in item_cols:
+            conn.execute("ALTER TABLE items ADD COLUMN dest TEXT NOT NULL DEFAULT ''")
 
 
 def now() -> float:

@@ -11,7 +11,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import crud, notify, onelou, targets as targets_mod
+from . import appsettings, crud, episode, naming, notify, onelou, targets as targets_mod
 from .config import settings
 from .database import now
 from .fetcher import FetchError, fetch_text
@@ -22,7 +22,26 @@ log = logging.getLogger(__name__)
 _scheduler: BackgroundScheduler | None = None
 
 
-def _dispatch(feed: dict, urls: str) -> None:
+def _plan_location(feed: dict, item: dict) -> str:
+    """If the feed has scraped metadata + rename enabled, organize this item into
+    an Emby/Jellyfin folder and record the planned path on the item. Returns the
+    download location to use for the target."""
+    base_location = feed.get("target_folder") or ""
+    if not (feed.get("rename_enabled") and (feed.get("title_cn") or feed.get("original_title"))):
+        return base_location
+    ep = episode.parse_episode(item.get("title", ""))
+    if ep is None:
+        return base_location  # can't place it without an episode number
+    ep = episode.apply_offset(ep, feed.get("episode_offset") or 0)
+    meta = {"title": feed.get("title_cn") or feed.get("original_title"), "year": feed.get("year")}
+    plan = naming.build(meta, feed.get("season") or 1, ep, feed.get("rename_template") or None)
+    root = (feed.get("library_path") or appsettings.all_settings().get("library_root") or "").rstrip("/")
+    location = f"{root}/{plan['folder']}" if root else plan["folder"]
+    item["dest"] = plan["full"] + ".*"
+    return location
+
+
+def _dispatch(feed: dict, urls: str, location: str) -> None:
     """Send resolved URLs to the feed's configured target."""
     tid = feed.get("target_id")
     if not tid:
@@ -33,7 +52,7 @@ def _dispatch(feed: dict, urls: str) -> None:
     if not target_row["enabled"]:
         raise targets_mod.TargetError(f"目标「{target_row['name']}」已停用")
     target = targets_mod.make_target(target_row["type"], target_row["config"])
-    target.add(urls, feed.get("target_folder") or "")
+    target.add(urls, location)
 
 
 def _collect_rss(feed: dict, dry_run: bool) -> tuple[list[dict], int]:
@@ -78,7 +97,8 @@ def process_feed(feed: dict, *, dry_run: bool = False) -> dict:
                 summary["failed"] += 1
                 continue
             try:
-                _dispatch(feed, item["download"])
+                location = _plan_location(feed, item)
+                _dispatch(feed, item["download"], location)
                 crud.record_item(feed_id, item, "ok")
                 summary["pushed"] += 1
             except Exception as exc:  # noqa: BLE001
